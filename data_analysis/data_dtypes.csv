@@ -1,0 +1,87 @@
+column,dtype
+Flow ID,String
+Src IP,String
+Src Port,Float64
+Dst IP,String
+Dst Port,Int64
+Protocol,Float64
+Timestamp,String
+Flow Duration,Float64
+Total Fwd Packet,Float64
+Total Bwd packets,Float64
+Total Length of Fwd Packet,Float64
+Total Length of Bwd Packet,Float64
+Fwd Packet Length Max,Float64
+Fwd Packet Length Min,Float64
+Fwd Packet Length Mean,Float64
+Fwd Packet Length Std,Float64
+Bwd Packet Length Max,Float64
+Bwd Packet Length Min,Float64
+Bwd Packet Length Mean,Float64
+Bwd Packet Length Std,Float64
+Flow Bytes/s,Float64
+Flow Packets/s,Float64
+Flow IAT Mean,Float64
+Flow IAT Std,Float64
+Flow IAT Max,Float64
+Flow IAT Min,Float64
+Fwd IAT Total,Float64
+Fwd IAT Mean,Float64
+Fwd IAT Std,Float64
+Fwd IAT Max,Float64
+Fwd IAT Min,Float64
+Bwd IAT Total,Float64
+Bwd IAT Mean,Float64
+Bwd IAT Std,Float64
+Bwd IAT Max,Float64
+Bwd IAT Min,Float64
+Fwd PSH Flags,Float64
+Bwd PSH Flags,Float64
+Fwd URG Flags,Float64
+Bwd URG Flags,Float64
+Fwd Header Length,Float64
+Bwd Header Length,Float64
+Fwd Packets/s,Float64
+Bwd Packets/s,Float64
+Packet Length Min,Float64
+Packet Length Max,Float64
+Packet Length Mean,Float64
+Packet Length Std,Float64
+Packet Length Variance,Float64
+FIN Flag Count,Float64
+SYN Flag Count,Float64
+RST Flag Count,Float64
+PSH Flag Count,Float64
+ACK Flag Count,Float64
+URG Flag Count,Float64
+CWR Flag Count,Float64
+ECE Flag Count,Float64
+Down/Up Ratio,Float64
+Average Packet Size,Float64
+Fwd Segment Size Avg,Float64
+Bwd Segment Size Avg,Float64
+Fwd Bytes/Bulk Avg,Float64
+Fwd Packet/Bulk Avg,Float64
+Fwd Bulk Rate Avg,Float64
+Bwd Bytes/Bulk Avg,Float64
+Bwd Packet/Bulk Avg,Float64
+Bwd Bulk Rate Avg,Float64
+Subflow Fwd Packets,Float64
+Subflow Fwd Bytes,Float64
+Subflow Bwd Packets,Float64
+Subflow Bwd Bytes,Float64
+FWD Init Win Bytes,Float64
+Bwd Init Win Bytes,Float64
+Fwd Act Data Pkts,Float64
+Fwd Seg Size Min,Float64
+Active Mean,Float64
+Active Std,Float64
+Active Max,Float64
+Active Min,Float64
+Idle Mean,Float64
+Idle Std,Float64
+Idle Max,Float64
+Idle Min,Float64
+Label,String
+Traffic Type,String
+Traffic Subtype,String
