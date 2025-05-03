@@ -1,0 +1,10 @@
+Correlation Matrix for  packet_metrics
+Label: 0=Benign, 1=Malicious
+
+      Label  Total Length of Fwd Packet  Total Length of Bwd Packet  Packet Length Mean  Packet Length Min  Packet Length Max
+0  1.000000                   -0.327844                   -0.223751           -0.003402          -0.005988          -0.008568
+1 -0.327844                    1.000000                    0.001303            0.033160           0.031539           0.029631
+2 -0.223751                    0.001303                    1.000000            0.006965          -0.001954           0.013701
+3 -0.003402                    0.033160                    0.006965            1.000000           0.724901           0.956879
+4 -0.005988                    0.031539                   -0.001954            0.724901           1.000000           0.549122
+5 -0.008568                    0.029631                    0.013701            0.956879           0.549122           1.000000
