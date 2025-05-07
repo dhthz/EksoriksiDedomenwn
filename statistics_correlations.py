@@ -14,7 +14,6 @@ def plot_statistics_correlation_heatmap():
     df = df.set_index('statistic') # Set 'statistic' column as index
     df = df.select_dtypes(include=['float64', 'int64']) # Select only numeric columns
     df = df.loc[['mean', 'std', 'min', '25%', '50%', '75%', 'max']] # row selection
-    df = df.iloc[1:]  # Remove the first row
 
     correlation_between_stats = df.T.corr() # T: Transpose to get correlation between statistics
 
