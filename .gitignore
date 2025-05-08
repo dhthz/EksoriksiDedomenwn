@@ -2,4 +2,6 @@
 *.png
 *.csv
 *.parquet
-*.lock
+*.~lock
+*.zip.tar.gz
+*.txt
