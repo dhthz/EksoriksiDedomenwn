@@ -1,4 +1,5 @@
 .venv
-.png
-.csv
-.parquet
+*.png
+*.csv
+*.parquet
+*.lock

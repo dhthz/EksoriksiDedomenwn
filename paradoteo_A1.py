@@ -6,9 +6,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import json
 
-# CORRECT
 
-
+# CORRECT Helper function gia na sanitizarei ta onomata twn columns
 def sanitize_filename(original_name):
     """
     Sanitizes string for use in filenames and paths.
@@ -32,10 +31,8 @@ def sanitize_filename(original_name):
 
     return sanitized
 
-# CORRECT
 
-
-def load_data_from_csv_parquet_format(file_name):
+def load_data_from_csv_parquet_format(file_name):  # CORRECT
     """
     Loads Data from Parquet or CSV file given its path and returns it as a polars Dataframe.
     Args: data (pl.DataFrame): Dataset (Polars DataFrame)
@@ -66,10 +63,8 @@ def load_data_from_csv_parquet_format(file_name):
         print(f"An error occurred: {e}")
         return None
 
-# CORRECT
 
-
-def analyze_data(data):
+def analyze_data(data):  # CORRECT
     """
     Analyzes the data and returns statistics.
     Args: data (pl.DataFrame): Dataset (Polars DataFrame)
@@ -99,6 +94,7 @@ def analyze_data(data):
         print(f"An error occurred during analysis: {e}")
 
 
+# Den thumamai ti kanei auth mallon den xreiazetai alla thn afhnw edw gia na uparxei
 def export_plot_findings(data, column_name, output_folder):
     """
     Export statistical findings from plots to text file
@@ -157,79 +153,122 @@ def export_plot_findings(data, column_name, output_folder):
             f.write("\n" + "=" * 50 + "\n")
 
 
-def plot_histograms_grouped_by_column(data, column_name):
+def plot_histograms_grouped_by_column(data, column_name=None):  # Working
     """
-    Memory-efficient histogram plotting
+    Plots memory-efficient grouped histograms for numeric columns.
+    If column_name is provided, plots grouped histograms by that column.
+    If column_name is None, plots regular histograms.
     """
     # Select numeric columns using Polars
     numeric_data = data.select(
         [col for col, dtype in data.schema.items() if dtype in (pl.Float64, pl.Int64)]
     )
 
-    # Get categories using Polars
-    categories = data.select(column_name).unique().to_series().to_list()
-    colors = ['blue', 'red', 'green', 'orange', 'purple']
-
     # Create output folder
-    output_folder = f"grouped_histograms_by_{sanitize_filename(column_name)}"
+    if column_name is not None:
+        output_folder = f"grouped_histograms_by_{sanitize_filename(column_name)}"
+    else:
+        output_folder = "ungrouped_histograms"
     os.makedirs(output_folder, exist_ok=True)
 
-    # Process each numeric column
-    for col in numeric_data.columns:
-        print(f"Plotting grouped histogram for: {col}")
-        plt.figure(figsize=(12, 6))
+    colors = ['blue', 'red', 'green', 'orange', 'purple']
 
-        # Process each category separately
-        for idx, category in enumerate(categories):
-            # Filter and select only necessary data using Polars
-            category_data = (data
-                             .filter(pl.col(column_name) == category)
-                             .select(col)
-                             .to_numpy()
-                             .flatten())
+    # If grouping is required
+    if column_name is not None:
+        # Get unique categories
+        categories = data.select(column_name).unique().to_series().to_list()
+        # Print unique categories
+        print(f"Categories found in '{column_name}': {categories}")
 
-            if len(category_data) > 0:
-                plt.hist(category_data, bins=50, alpha=0.5,
-                         label=str(category),
-                         color=colors[idx % len(colors)],
-                         density=True)
+        # Process each numeric column
+        for col in numeric_data.columns:
+            print(f"Plotting grouped histogram for: {col}")
+            plt.figure(figsize=(12, 6))
 
-        plt.title(f"Distribution of {col} by {column_name}")
-        plt.xlabel(col)
-        plt.ylabel("Density")
-        plt.legend()
+            # Process each category separately
+            for idx, category in enumerate(categories):
+                # Filter and select data for each category using Polars
+                category_data = (data
+                                 .filter(pl.col(column_name) == category)
+                                 .select(col)
+                                 .to_numpy()
+                                 .flatten())
 
-        # Save and cleanup
-        sanitized_col = sanitize_filename(col)
-        output_path = os.path.join(
-            output_folder, f"{sanitized_col}_grouped_histogram.png")
-        plt.savefig(output_path)
-        plt.close()
-        print(f"Saved grouped histogram to {output_path}")
+                # Check count
+                print(
+                    f"Category '{category}' data count for {col}: {len(category_data)}")
 
-# CORRECT
+                # If there is data for this category, plot the histogram
+                if len(category_data) > 0:
+                    plt.hist(category_data, bins=50, alpha=0.5,
+                             label=str(category),
+                             color=colors[idx % len(colors)],
+                             density=True)  # Density plot
+
+            plt.title(f"Distribution of {col} grouped by {column_name}")
+            plt.xlabel(col)
+            plt.ylabel("Density")
+            plt.legend()
+
+            # Save and cleanup
+            sanitized_col = sanitize_filename(col)
+            output_path = os.path.join(
+                output_folder, f"{sanitized_col}_grouped_histogram.png")
+            plt.savefig(output_path)
+            plt.close()
+            print(f"Saved grouped histogram to {output_path}")
+
+    else:
+        # No grouping — just plot histograms for each numeric column
+        for col in numeric_data.columns:
+            print(f"Plotting histogram for: {col}")
+            data_array = data.select(col).to_numpy().flatten()
+
+            if len(data_array) > 0:
+                plt.figure(figsize=(12, 6))
+                # Compute 99th percentile for upper bound
+                upper_bound = np.percentile(data_array, 99)
+
+                # Clip only the upper bound
+                clipped_data = data_array[data_array <= upper_bound]
+
+                # Plot density instead of count
+                plt.hist(clipped_data, bins=50, color='blue',
+                         alpha=0.7, density=True)
+
+                # Only set the upper bound for x-axis
+                plt.xlim(None, upper_bound)
+                plt.title(f"Density of {col}")
+                plt.xlabel(col)
+                plt.ylabel("Density")
+
+                output_path = os.path.join(
+                    output_folder, f"{sanitize_filename(col)}_histogram.png")
+                plt.savefig(output_path)
+                plt.close()
+                print(f"Saved histogram to {output_path}")
 
 
-def plot_boxplots_grouped_by_column(data, column_name):
+def plot_boxplots_grouped_by_column(data, column_name=None):
     """
     Plots boxplots for all numeric columns grouped by the column_name.
     Args:
         - data (pl.DataFrame): Dataset
         - column_name (str): Column to group by
     """
-    # Select numeric columns
     numeric_data = data.select(
         [col for col, dtype in data.schema.items() if dtype in (pl.Float64, pl.Int64)]
     )
 
-    # Convert to Pandas
     df = data.to_pandas()
 
-    # Create sanitized output folder name
-    output_folder = f"boxplots_by_{sanitize_filename(column_name)}"
+    if column_name is not None:
+        output_folder = f"boxplots_by_{sanitize_filename(column_name)}"
+    else:
+        output_folder = "ungrouped_boxplots"
+
     os.makedirs(output_folder, exist_ok=True)
 
-    # Loop over numeric columns
     for col in numeric_data.columns:
         print(f"Plotting boxplot for: {col}")
 
@@ -238,28 +277,39 @@ def plot_boxplots_grouped_by_column(data, column_name):
             print(f"Skipping column '{col}' because it has no data.")
             continue
 
-        # Create plot
         plt.figure(figsize=(15, 8))
-        df.boxplot(column=col, by=column_name, vert=False, grid=False,
-                   patch_artist=True, boxprops=dict(facecolor='blue', alpha=0.7))
-        plt.title(f"Boxplot of {col} by {column_name}")
+
+        if column_name is not None:
+            # Grouped boxplot
+            df.boxplot(column=col, by=column_name, vert=False, grid=False,
+                       patch_artist=True, boxprops=dict(facecolor='blue', alpha=0.7))
+            plt.title(f"Boxplot of {col} by {column_name}")
+            plt.ylabel(column_name)
+        else:
+            # Regular (ungrouped) boxplot
+            plt.boxplot(df[col].dropna(), vert=False,
+                        patch_artist=True, boxprops=dict(facecolor='blue', alpha=0.7))
+            plt.title(f"Boxplot of {col}")
+            plt.ylabel('')
+
         plt.suptitle("")
         plt.xlabel(col)
-        plt.ylabel(column_name)
 
-        # Save plot with sanitized names
+        # Save plot
         sanitized_col = sanitize_filename(col)
-        sanitized_category = sanitize_filename(column_name)
-        output_path = os.path.join(
-            output_folder, f"{sanitized_col}_by_{sanitized_category}_boxplot.png"
-        )
+        if column_name is not None:
+            sanitized_category = sanitize_filename(column_name)
+            filename = f"{sanitized_col}_by_{sanitized_category}_boxplot.png"
+        else:
+            filename = f"{sanitized_col}_boxplot.png"
+
+        output_path = os.path.join(output_folder, filename)
         plt.savefig(output_path)
         plt.close()
         print(f"Saved boxplot to {output_path}")
 
-# CORRECT?
 
-
+# TODO Tha to kanoume gia sugkekrimena columns mallon
 def plot_correlation_heatmap(data, category):
     """
     Creates and saves correlation heatmap including Label correlations.
@@ -387,7 +437,27 @@ def plot_correlation_heatmap(data, category):
         print(f"Saved histogram to {output_path}")
 
 
-def plot_flag_distributions(data):
+# HELPER FUNCTION gia ta counts twn label klp
+def count_categories_in_column(data, column_name):
+    """
+    Counts the occurrences of each category in the specified column.
+    """
+    # Get the unique categories in the specified column
+    categories = data.select(column_name).unique().to_series().to_list()
+    print(categories)
+    # Create a dictionary to store the counts
+    category_counts = {}
+
+    # Loop through each category and count the occurrences
+    for category in categories:
+        category_count = data.filter(pl.col(column_name) == category).height
+        category_counts[category] = category_count
+        print(f"Category '{category}' has {category_count} records.")
+
+    return category_counts
+
+
+def plot_flag_distributions(data):  # TODO mallon thelei diagrafh auto
     """
     Creates bar plots for flag columns showing counts grouped by Label
     """
@@ -432,86 +502,59 @@ def plot_flag_distributions(data):
         print(f"Saved flag distribution to {output_path}")
 
 
+def calculate_correlation_matrix(data):  # WORKING
+    columns_to_drop_NO_VARIANCE = [
+        "Bwd PSH Flags",
+        "Bwd URG Flags",
+        "Fwd Bytes/Bulk Avg",
+        "Fwd Packet/Bulk Avg",
+        "Fwd Bulk Rate Avg"
+    ]
+
+    # Drop from the main DataFrame
+    data = data.drop(columns_to_drop_NO_VARIANCE)
+
+    numeric_data = data.select(
+        [col for col, dtype in data.schema.items() if dtype in (pl.Float64, pl.Int64)]
+    )
+    for col in numeric_data.columns:
+        # Calculate variance for the column
+        variance = numeric_data.select(pl.col(col)).var(
+        ).to_numpy().item()  # Convert to scalar value
+
+    # Check if variance is zero
+        if variance == 0:
+            print(f"Column {col} has zero variance.")
+
+    corr_matrix = numeric_data.corr()
+
+    # Save the correlation matrix to a .txt file
+    # Convert the Polars DataFrame to a Pandas DataFrame
+    corr_matrix_pd = corr_matrix.to_pandas()
+    # Save the correlation matrix to a .txt file using pandas
+    corr_matrix_pd.to_csv('correlation_matrix.txt',
+                          sep='\t', header=True, index=True)
+
+    print("Correlation matrix saved to 'correlation_matrix.txt'")
+
+
 def main():
     file_name = 'data'
     df = load_data_from_csv_parquet_format(file_name)
 
-    # categorical_columns = [
-    #     'Label',
-    #     'Traffic Type',
-    #     'Protocol'
-    # ]
-
-    # flag_columns = [
-    #     'FIN Flag Count',
-    #     'SYN Flag Count',
-    #     'PSH Flag Count',
-    #     'ACK Flag Count',
-    #     'URG Flag Count'
-    # ]
-
-    # key_metrics = [
-    #     'Flow Duration',
-    #     'Flow Bytes/s',
-    #     'Flow Packets/s',
-    #     'Total Length of Fwd Packet',
-    #     'Total Length of Bwd Packet',
-    #     'Packet Length Mean',
-    #     'Flow IAT Mean'
-    # ]
-
     if df is not None:
         # 1. Analyze data
-        plot_histograms_grouped_by_column(df, 'Label')
+        # count_categories_in_column(df, 'Label')
+        # plot_histograms_grouped_by_column(df, 'Label') # Grouped Histograms by column Label
+        # plot_histograms_grouped_by_column(df) # Ungrouped Histograms
+        # calculate_correlation_matrix(df)
+
+        # Grouped Boxplots by column Label
+        #plot_boxplots_grouped_by_column(df, 'Label')
+
+        # Ungrouped Boxplots
+        plot_boxplots_grouped_by_column(df)
 
 
 if __name__ == "__main__":
     main()
-
-
-def skata():
-    label_col = 'Label'  # Replace with actual name if different
-    malicious_label = "Malicious"
-    benign_label = "Benign"   # Use 0 if 'benign' is labeled as 0
-
-    #  Get numeric columns except the label
-    feature_cols = [col for col in df.columns if col !=
-                    label_col and df[col].dtype in [pl.Float64, pl.Int64]]
-
-    results = []
-
-    for col in feature_cols:
-        benign_vals = df.filter(pl.col(label_col) ==
-                                benign_label).select(col).to_series()
-        malicious_vals = df.filter(
-            pl.col(label_col) == malicious_label).select(col).to_series()
-
-        mean_diff = malicious_vals.mean() - benign_vals.mean()
-        std_benign = benign_vals.std()
-        if std_benign == 0:
-            std_benign = 1e-6  # Avoid division by zero
-
-        standardized_diff = mean_diff / std_benign
-
-        results.append({
-            'Feature': col,
-            'Mean_Difference': mean_diff,
-            'Standardized_Difference': standardized_diff
-        })
-
-    # Convert to Polars DataFrame and sort
-    results_df = pl.DataFrame(results)
-    results_df = results_df.with_columns(
-        (pl.col('Standardized_Difference').abs()).alias('Abs_Std_Diff')
-    ).sort('Abs_Std_Diff', descending=True)
-
-    # Show top 10
-    print(results_df.select(
-        ['Feature', 'Mean_Difference', 'Standardized_Difference']).head(10))
-
-    df_pandas = results_df.select(
-        ['Feature', 'Mean_Difference', 'Standardized_Difference']).to_pandas()
-
-    # Save to txt file (full table)
-    with open("labels_output.txt", "w") as f:
-        f.write(df_pandas.to_string(index=False))
