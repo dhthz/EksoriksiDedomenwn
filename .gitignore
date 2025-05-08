@@ -3,5 +3,6 @@
 *.csv
 *.parquet
 *.~lock
-*.zip.tar.gz
+*.zip
+*.tar.gz
 *.txt
