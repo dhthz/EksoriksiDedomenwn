@@ -35,6 +35,47 @@ def plot_statistics_correlation_heatmap():
     plt.savefig(output_path, bbox_inches='tight', dpi=300)
     plt.show()
 
+def plot_statistics_correlation_heatmap_by_group():
+    file = 'data_analysis/data_description.csv'
+    df = pd.read_csv(file)
+    df = df.set_index('statistic') # Set 'statistic' column as index
+    df = df.select_dtypes(include=['float64', 'int64']) # Select only numeric columns
+    df = df.loc[['mean', 'std', 'min', '25%', '50%', '75%', 'max']] # row selection
+
+    with open('grouping.json', 'r') as f:
+        groups = json.load(f)
+    
+    # Create a heatmap for each group
+    for group_name, metrics in groups.items():
+        # Filter metrics that exist in the dataframe
+        valid_metrics = [m for m in metrics if m in df.columns and m != 'Label']
+        
+        if len(valid_metrics) < 2:  # Skip if less than 2 valid metrics
+            print(f"Skipping {group_name}: Not enough valid metrics")
+            continue
+            
+        # Select only the columns for this group
+        group_df = df[valid_metrics]
+        correlation_matrix = group_df.T.corr()
+
+        # Create heatmap
+        plt.figure(figsize=(12, 10))
+        sns.heatmap(correlation_matrix, 
+                    annot=True,
+                    cmap='coolwarm',
+                    fmt='.2f',
+                    square=True,
+                    linewidths=0.5)
+
+        plt.title(f'Correlation Heatmap of Statistics by {group_name}')
+        plt.xticks(rotation=45, ha='right')
+        plt.yticks(rotation=0)
+
+        # Save the plot
+        output_path = f'statistics_correlations/stats_correlations_heatmap_by_{group_name}.png'
+        plt.savefig(output_path, bbox_inches='tight', dpi=300)
+        plt.show()
+
 
 # CORRECT AND WORKS
 #COMPUTES THE CORRELATION BETWEEN THE AGGREGATE OF STATISTICS AND IS PROBABLY UNECESSARY
