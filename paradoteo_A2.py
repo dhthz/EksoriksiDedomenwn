@@ -3,6 +3,10 @@ import polars as pl
 import math
 import numpy as np
 from paradoteo_A1 import load_data_from_csv_parquet_format
+import hdbscan
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
 
 
 def stratified_sampling_multicolumn(data, columns, sample_size, random_seed=42):
@@ -124,7 +128,7 @@ def validate_dataset_quality(original_df, sampled_df):
             sample_percentages = comparison.select(
                 pl.col("percentage_sample").fill_null(0)).to_numpy().flatten()
 
-            # Jensen-Shannon divergence approximation (simpler than KL divergence)
+            # Jensen-Shannon divergence approximation (simpler than KL divergence) #TODO Check what this is
             diff = sum(abs(o - s)
                        for o, s in zip(orig_percentages, sample_percentages))
             similarity = 100 - (diff / 2)  # Convert to similarity percentage
@@ -203,7 +207,7 @@ def validate_dataset_quality(original_df, sampled_df):
         print(
             f"\nOVERALL INFORMATION PRESERVATION SCORE: {overall_score:.2f}%")
 
-        if overall_score >= 95:
+        if overall_score >= 95:  # TODO REMOVE Later
             print(
                 "EXCELLENT: Sample preserves nearly all information from original dataset")
         elif overall_score >= 90:
@@ -218,67 +222,211 @@ def validate_dataset_quality(original_df, sampled_df):
     return metrics
 
 
+def calculate_new_data_set_preservation_statistics(df, dfAfterSampling, fileName):
+    print(f"Loaded dataset with {df.height:,} rows and {df.width} columns")
+
+    # Save a copy of the original dataset for validation
+    df_before_sampling = df.clone()
+    # Drop columns with zero/low variance (optional)
+    if df.width > 30:  # Only if we have many columns
+        print("Removing low-variance columns...")
+        # Calculate variances
+        variances = {}
+        for col in df.columns:
+            if col not in ['Label', 'Traffic Type']:
+                try:
+                    var = df.select(pl.col(col).var()).item()
+                    variances[col] = var
+                except:
+                    variances[col] = 0
+        # Keep columns with non-zero variance and essential columns
+        essential_cols = ['Label', 'Traffic Type']
+        keep_cols = [col for col in df.columns if col in essential_cols or
+                     (col in variances and variances[col] > 0)]
+        df = df.select(keep_cols)
+        print(f"Reduced to {df.width} columns")
+
+        # Validate information preservation
+        validation_metrics = validate_dataset_quality(
+            df_before_sampling, dfAfterSampling)
+        # Save results
+        dfAfterSampling.write_parquet(f"sampled_data_10k_${fileName}.parquet")
+        print(
+            f"Saved {dfAfterSampling.height:,} samples to sampled_data_10k.parquet")
+        # Save validation metrics for reference
+        with open(f"validation_metrics_${fileName}.txt", "w") as f:
+            f.write("Dataset Information Preservation Metrics:\n")
+            f.write("=======================================\n\n")
+            for key, value in validation_metrics.items():
+                f.write(f"{key}: {value:.2f}%\n")
+            f.write(
+                f"\nReduction ratio: {df.height / dfAfterSampling.height:.0f}:1")
+        print("Validation metrics saved to validation_metrics.txt")
+
+
+def kmeans_sampling(data, sample_size=5000, random_seed=42):
+    """Simple K-means sampling using scikit-learn."""
+    print("RUNNING KMENANS  SAMPLING")
+
+    # Create stratification column
+    if 'Label' in data.columns:
+        if 'Traffic Type' in data.columns:
+            data = data.with_columns(pl.concat_str([pl.col('Label'), pl.col('Traffic Type')],
+                                                   separator="_").alias("strat_group"))
+        else:
+            data = data.with_columns(pl.col('Label').alias("strat_group"))
+    else:
+        data = data.with_columns(pl.lit("all").alias("strat_group"))
+    print("GETTING COUNTS")
+
+    # Get samples per group
+    counts = data.group_by("strat_group").agg(pl.count())
+    counts = counts.with_columns(
+        (pl.col("count") / data.height * sample_size).round().cast(pl.Int64).alias("target"))
+    counts = counts.with_columns(pl.max_horizontal(
+        pl.col("target"), 1).alias("target"))
+
+    results = []
+    print("FIRST FOR")
+    for row in counts.to_dicts():
+        group_data = data.filter(pl.col("strat_group") == row["strat_group"])
+        target = min(row["target"], row["count"])
+
+        # Get numeric columns
+        numeric_cols = [col for col in group_data.columns
+                        if col not in ['Label', 'Traffic Type', 'strat_group']
+                        and group_data.schema[col] in (pl.Float64, pl.Int64)]
+
+        # Extract and scale features
+        X = group_data.select(numeric_cols).fill_null(0).to_numpy()
+        X = StandardScaler().fit_transform(X)
+        print("RUNNING KMENAS ")
+        # Run K-means
+        kmeans = KMeans(n_clusters=target, init='k-means++',
+                        n_init=10, random_state=random_seed).fit(X)
+
+        # Get points closest to centroids
+        indices = []
+        print("RUNNING KMENAS for")
+        for i, centroid in enumerate(kmeans.cluster_centers_):
+            cluster_points = np.where(kmeans.labels_ == i)[0]
+            if len(cluster_points) == 0:
+                continue
+            distances = np.sum((X[cluster_points] - centroid)**2, axis=1)
+            closest = cluster_points[np.argmin(distances)]
+            indices.append(closest)
+
+        results.append(group_data.sample(
+            n=len(indices), seed=random_seed, with_replacement=False))
+    print("RESULT")
+    # Combine and drop stratification column
+    result = pl.concat(results).drop("strat_group")
+    print(f"Created {result.height} row K-means sample")
+    return result
+
+
+def hdbscan_sampling(data, sample_size=5000, random_seed=42):
+    """Simple HDBSCAN sampling."""
+    print("DOING HDBSCAN SAMPLING")
+    # Create stratification column
+    if 'Label' in data.columns:
+        if 'Traffic Type' in data.columns:
+            data = data.with_columns(pl.concat_str([pl.col('Label'), pl.col('Traffic Type')],
+                                                   separator="_").alias("strat_group"))
+        else:
+            data = data.with_columns(pl.col('Label').alias("strat_group"))
+    else:
+        data = data.with_columns(pl.lit("all").alias("strat_group"))
+
+    # Get samples per group
+    counts = data.group_by("strat_group").agg(pl.count())
+    counts = counts.with_columns(
+        (pl.col("count") / data.height * sample_size).round().cast(pl.Int64).alias("target"))
+    counts = counts.with_columns(pl.max_horizontal(
+        pl.col("target"), 1).alias("target"))
+    print("ENTERING FOR:")
+    results = []
+    print(counts)
+    for row in counts.to_dicts():
+        group_data = data.filter(pl.col("strat_group") == row["strat_group"])
+        target = min(row["target"], row["count"])
+
+        # Get numeric columns
+        numeric_cols = [col for col in group_data.columns
+                        if col not in ['Label', 'Traffic Type', 'strat_group']
+                        and group_data.schema[col] in (pl.Float64, pl.Int64)]
+
+        try:
+            # Extract and scale features
+            X = group_data.select(numeric_cols).fill_null(0).to_numpy()
+            X = StandardScaler().fit_transform(X)
+
+            # Run HDBSCAN
+            print("RUNNING SCAN")
+            clusterer = hdbscan.HDBSCAN(min_cluster_size=5).fit(X)
+
+            # Sample points from each cluster
+            sample_indices = []
+
+            # Get unique clusters (excluding noise points)
+            clusters = np.unique(clusterer.labels_[clusterer.labels_ >= 0])
+            print("RUNNING SCAN FOR")
+            # For each cluster, sample proportionally
+            for cluster in clusters:
+                points = np.where(clusterer.labels_ == cluster)[0]
+                n_samples = max(
+                    1, int(len(points) / group_data.height * target))
+                n_samples = min(n_samples, len(points))
+                np.random.seed(random_seed + cluster)
+                sample_indices.extend(np.random.choice(
+                    points, size=n_samples, replace=False))
+            # Add noise points if needed
+            if len(sample_indices) < target:
+                noise_points = np.where(clusterer.labels_ == -1)[0]
+                if len(noise_points) > 0:
+                    n_noise = min(target - len(sample_indices),
+                                  len(noise_points))
+                    np.random.seed(random_seed)
+                    sample_indices.extend(np.random.choice(
+                        noise_points, size=n_noise, replace=False))
+
+            # If still not enough, add random points
+            if len(sample_indices) < target:
+                remaining = np.array(
+                    list(set(range(group_data.height)) - set(sample_indices)))
+                if len(remaining) > 0:
+                    n_more = min(target - len(sample_indices), len(remaining))
+                    np.random.seed(random_seed)
+                    sample_indices.extend(np.random.choice(
+                        remaining, size=n_more, replace=False))
+            print("TAKING SAMPLE")
+
+            # Take sample
+            results.append(group_data.sample(
+                n=len(sample_indices[:target]), seed=random_seed, with_replacement=False))
+
+        except Exception as e:
+            print(f"HDBSCAN error: {e}. Using random sampling.")
+            results.append(group_data.sample(n=target, seed=random_seed))
+
+    # Combine and drop stratification column
+    result = pl.concat(results).drop("strat_group")
+    print(f"Created {result.height} row HDBSCAN sample")
+    return result
+
+
 def main():
     file_name = 'data'
     df = load_data_from_csv_parquet_format(file_name)
 
-    if df is not None:
-        print(f"Loaded dataset with {df.height:,} rows and {df.width} columns")
+    if df is not None:  # TODO DONT RUN NEEDS CHANGES TO HIGH COUNTS , Tha kanoume stratified sampling sta megal prin ksekinisei to kmeans kai hdbscan
+        # hdbscan_dataset = hdbscan_sampling(df)
+        # kmeans_dataset = kmeans_sampling(df)
 
-        # Save a copy of the original dataset for validation
-        df_before_sampling = df.clone()
-
-        # Drop columns with zero/low variance (optional)
-        if df.width > 30:  # Only if we have many columns
-            print("Removing low-variance columns...")
-            # Calculate variances
-            variances = {}
-            for col in df.columns:
-                if col not in ['Label', 'Traffic Type']:
-                    try:
-                        var = df.select(pl.col(col).var()).item()
-                        variances[col] = var
-                    except:
-                        variances[col] = 0
-
-            # Keep columns with non-zero variance and essential columns
-            essential_cols = ['Label', 'Traffic Type']
-            keep_cols = [col for col in df.columns if col in essential_cols or
-                         (col in variances and variances[col] > 0)]
-
-            df = df.select(keep_cols)
-            print(f"Reduced to {df.width} columns")
-
-        # Perform stratified sampling
-        sample_size = 10000
-        columns_to_stratify = [
-            'Label', 'Traffic Type'] if 'Traffic Type' in df.columns else ['Label']
-
-        sampled_df = stratified_sampling_multicolumn(
-            df,
-            columns=columns_to_stratify,
-            sample_size=sample_size
-        )
-
-        if sampled_df is not None:
-            # Validate information preservation
-            validation_metrics = validate_dataset_quality(
-                df_before_sampling, sampled_df)
-
-            # Save results
-            sampled_df.write_parquet("sampled_data_10k.parquet")
-            print(
-                f"Saved {sampled_df.height:,} samples to sampled_data_10k.parquet")
-
-            # Save validation metrics for reference
-            with open("validation_metrics.txt", "w") as f:
-                f.write("Dataset Information Preservation Metrics:\n")
-                f.write("=======================================\n\n")
-                for key, value in validation_metrics.items():
-                    f.write(f"{key}: {value:.2f}%\n")
-                f.write(
-                    f"\nReduction ratio: {df.height / sampled_df.height:.0f}:1")
-            print("Validation metrics saved to validation_metrics.txt")
+        # calculate_new_data_set_preservation_statistics(
+        #     df, kmeans_dataset, 'kMeans')
+        # calculate_new_data_set_preservation_statistics(
+        #     df, hdbscan_dataset, 'hdbscan')
 
 
 if __name__ == "__main__":
