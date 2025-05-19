@@ -94,65 +94,6 @@ def analyze_data(data):  # CORRECT
         print(f"An error occurred during analysis: {e}")
 
 
-# Den thumamai ti kanei auth mallon den xreiazetai alla thn afhnw edw gia na uparxei
-def export_plot_findings(data, column_name, output_folder):
-    """
-    Export statistical findings from plots to text file
-    """
-    findings_path = os.path.join(output_folder, "findings.txt")
-
-    with open(findings_path, 'w') as f:
-        f.write(f"Analysis of distributions grouped by {column_name}\n")
-        f.write("=" * 50 + "\n\n")
-
-        # For each numeric column
-        numeric_data = data.select(
-            [col for col, dtype in data.schema.items()
-             if dtype in (pl.Float64, pl.Int64)]
-        )
-
-        for col in numeric_data.columns:
-            f.write(f"\nColumn: {col}\n")
-            f.write("-" * 30 + "\n")
-
-            # Calculate statistics per category
-            for category in data.select(column_name).unique().to_series().to_list():
-                category_data = data.filter(
-                    pl.col(column_name) == category).select(col)
-
-                if category_data.is_empty:
-                    f.write(f"\nNo data for category {category}\n")
-                    continue
-
-                # Basic statistics
-                stats = category_data.describe()
-                f.write(f"\n{category} statistics:\n")
-                f.write(f"Mean: {stats['mean'][0]:.2f}\n")
-                f.write(f"Std: {stats['std'][0]:.2f}\n")
-                f.write(f"Min: {stats['min'][0]:.2f}\n")
-                f.write(f"Max: {stats['max'][0]:.2f}\n")
-                f.write(f"Count: {stats['count'][0]:.2f}\n")
-
-                # Density calculation
-                benign_data = data.filter(
-                    (pl.col(column_name) == category) & (pl.col('Label') == 0))
-                malicious_data = data.filter(
-                    (pl.col(column_name) == category) & (pl.col('Label') == 1))
-
-                if not benign_data.is_empty and not malicious_data.is_empty:
-                    benign_density = len(benign_data) / \
-                        (len(benign_data) + len(malicious_data))
-                    malicious_density = len(
-                        malicious_data) / (len(benign_data) + len(malicious_data))
-                    density_ratio = malicious_density / \
-                        benign_density if benign_density != 0 else float('inf')
-
-                    f.write(
-                        f"Density ratio (Malicious/Benign): {density_ratio:.2f}\n")
-
-            f.write("\n" + "=" * 50 + "\n")
-
-
 def plot_histograms_grouped_by_column(data, column_name=None):  # Working
     """
     Plots memory-efficient grouped histograms for numeric columns.
@@ -310,134 +251,142 @@ def plot_boxplots_grouped_by_column(data, column_name=None):
 
 
 # TODO Tha to kanoume gia sugkekrimena columns mallon
-def plot_correlation_heatmap(data, category):
+def calculate_feature_correlations(data):
     """
-    Creates and saves correlation heatmap including Label correlations.
-    Args: data (pl.DataFrame): Dataset with Label column
+    Calculates correlations between all numeric features to identify redundant columns.
+    Returns a correlation matrix and saves analysis files.
+    Args:
+        data (pl.DataFrame): The full dataset
     """
-    print(f"Input columns: {data.columns}")
+    print("Analyzing feature correlations...")
 
-    # Convert Label to numeric
-    if 'Label' in data.columns:
-        data = data.with_columns(
+    # First, convert categorical columns to numeric
+    data_prep = data.clone()
+
+    # Convert Label to numeric (0 = Benign, 1 = Malicious)
+    if 'Label' in data_prep.columns:
+        data_prep = data_prep.with_columns(
             pl.when(pl.col('Label') == 'Benign')
             .then(0)
             .otherwise(1)
             .alias('Label')
         )
+        print("Converted 'Label' to numeric: 0=Benign, 1=Malicious")
 
-    # Calculate correlation matrix and convert to pandas with names
-    corr_matrix = data.corr().to_pandas()
+    # Convert Traffic Type to numeric if present
+    if 'Traffic Type' in data_prep.columns:
+        # Get unique values and map them to integers
+        traffic_types = data_prep.select(
+            'Traffic Type').unique().sort('Traffic Type')
+        type_list = traffic_types.to_series().to_list()
+        type_mapping = {t: i for i, t in enumerate(type_list)}
 
-    # Ensure index and columns match
-    corr_matrix.index = data.columns
-    corr_matrix.columns = data.columns
+        # Create mapping function
+        def map_traffic_type(x):
+            return type_mapping.get(x, None)
 
-    # Create heatmap
-    plt.figure(figsize=(20, 16))
-    sns.heatmap(corr_matrix,
-                annot=True,
-                cmap='coolwarm',
-                center=0,
-                fmt='.2f',
-                square=True,
-                linewidths=0.5,
-                xticklabels=data.columns,  # Use column names
-                yticklabels=data.columns)  # Use column names
+        # Apply mapping using map_elements
+        data_prep = data_prep.with_columns(
+            pl.col('Traffic Type')
+            .map_elements(map_traffic_type, return_dtype=pl.Int64)
+            .alias('Traffic Type')
+        )
 
-    plt.title(f'Feature Correlation Heatmap - {category}', pad=20, fontsize=16)
-    plt.xticks(rotation=45, ha='right')
-    plt.yticks(rotation=0)
+        # Log the mapping for reference
+        print("Converted 'Traffic Type' to numeric with mapping:")
+        for k, v in type_mapping.items():
+            print(f"  {k} -> {v}")
 
-    # Save plot
-    output_folder = "correlations"
-    os.makedirs(output_folder, exist_ok=True)
-    output_path = os.path.join(
-        output_folder, f"correlation_heatmap_{category}.png")
-    plt.savefig(output_path, bbox_inches='tight', dpi=300)
-    plt.close()
-    print(f"Saved correlation heatmap to {output_path}")
+    # Make sure Label is included in numeric columns
+    # Create list of columns to include (Label + numeric columns)
+    columns_to_analyze = []
 
-    # Add text output
-    corr_matrix = data.corr().to_pandas()
+    # First add Label if it exists (ensure it's first in the matrix)
+    if 'Label' in data_prep.columns:
+        columns_to_analyze.append('Label')
 
-    # Save correlation values to text file
-    output_folder = "correlations"
-    os.makedirs(output_folder, exist_ok=True)
+    # Then add other numeric columns (except Label which is already added)
+    for col, dtype in data_prep.schema.items():
+        if dtype in (pl.Float64, pl.Int64) and col != 'Label':
+            columns_to_analyze.append(col)
 
-    text_output = os.path.join(
-        output_folder, f"correlation_matrix_{category}.txt")
-    with open(text_output, 'w') as f:
-        f.write(f"Correlation Matrix for {category}\n")
-        f.write("Label: 0=Benign, 1=Malicious\n\n")
-        f.write(corr_matrix.to_string())
+    # Select columns for correlation analysis
+    numeric_data = data_prep.select(columns_to_analyze)
 
-    print(f"Saved correlation matrix to {text_output}")
+    print(
+        f"Working with {len(numeric_data.columns)} numeric columns (including Label)")
 
-    """
-    Plots improved histograms for numeric columns with log scale option.
-    Args: data (pl.DataFrame): Dataset
-    """
-    # Select numeric columns
-    numeric_data = data.select(
-        [col for col, dtype in data.schema.items() if dtype in (pl.Float64, pl.Int64)]
-    )
+    # Check for and remove zero variance columns
+    columns_to_keep = []
+    zero_var_cols = []
+
+    for col in numeric_data.columns:
+        # Calculate variance using nan-safe methods
+        try:
+            # Explicitly compute variance to check if close to zero
+            variance = numeric_data.select(pl.col(col)).var().to_numpy().item()
+            if pd.isna(variance) or abs(variance) < 1e-10:  # Near-zero variance
+                print(f"Column '{col}' has zero/near-zero variance, skipping.")
+                zero_var_cols.append(col)
+            else:
+                columns_to_keep.append(col)
+        except Exception as e:
+            print(f"Error checking variance for column '{col}': {e}")
+            zero_var_cols.append(col)
+
+    if zero_var_cols:
+        print(
+            f"Removed {len(zero_var_cols)} zero-variance columns: {', '.join(zero_var_cols)}")
+        numeric_data = numeric_data.select(columns_to_keep)
+
+    print(
+        f"Proceeding with {len(columns_to_keep)} columns for correlation analysis")
+
+    # Calculate correlation matrix with remaining columns
+    corr_matrix = numeric_data.corr()
+
+    # Create pandas DataFrame for easier analysis
+    corr_df = corr_matrix.to_pandas()
+
+    # Ensure column names are properly set
+    corr_df.index = numeric_data.columns
+    corr_df.columns = numeric_data.columns
 
     # Create output folder
-    output_folder = "histograms"
+    output_folder = "feature_selection"
     os.makedirs(output_folder, exist_ok=True)
 
-    # Convert to pandas
-    df = numeric_data.to_pandas()
+    # Save full correlation matrix as CSV
+    corr_df.to_csv(os.path.join(output_folder, "full_correlation_matrix.csv"))
 
-    # Loop over numeric columns
-    for col in df.columns:
-        print(f"Plotting histogram for: {col}")
+    # Find highly correlated feature pairs (candidates for removal)
+    high_corr_pairs = []
 
-        # Skip if empty
-        if df[col].dropna().empty:
-            print(f"Skipping {col} - no data")
-            continue
+    # Use numpy for efficiency with large matrices
+    corr_values = corr_df.values
+    np.fill_diagonal(corr_values, 0)  # Remove self-correlations
 
-        # Create figure with two subplots - normal and log scale
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 12))
+    # Find pairs with high absolute correlation
+    high_corr_indices = np.where(np.abs(corr_values) > 0.9)
 
-        # Calculate range information
-        data_range = df[col].max() - df[col].min()
+    # Save high correlation pairs to CSV
+    with open(os.path.join(output_folder, "high_correlation_pairs.csv"), "w") as f:
+        f.write("Feature1,Feature2,Correlation\n")
+        for i, j in zip(high_corr_indices[0], high_corr_indices[1]):
+            # Only include each pair once (i < j)
+            if i < j:
+                feature1 = numeric_data.columns[i]
+                feature2 = numeric_data.columns[j]
+                correlation = corr_values[i, j]
+                f.write(f"{feature1},{feature2},{correlation:.6f}\n")
+                high_corr_pairs.append((feature1, feature2, correlation))
 
-        # Adjust bins based on data distribution
-        if data_range > 0:
-            bins = min(50, max(10, int(np.sqrt(len(df[col])))))
-        else:
-            bins = 30
+    print(f"Found {len(high_corr_pairs)} highly correlated feature pairs")
+    print("Analysis files saved to 'feature_selection' folder")
 
-        # Plot normal scale
-        ax1.hist(df[col], bins=bins, color='blue', alpha=0.7)
-        ax1.set_title(f"Distribution of {col} (Linear Scale)")
-        ax1.grid(True, alpha=0.3)
-
-        # Add statistical annotations
-        mean = df[col].mean()
-        median = df[col].median()
-        ax1.axvline(mean, color='red', linestyle='dashed', linewidth=1,
-                    label=f'Mean: {mean:.2f}')
-        ax1.axvline(median, color='green', linestyle='dashed', linewidth=1,
-                    label=f'Median: {median:.2f}')
-        ax1.legend()
-
-        plt.tight_layout()
-
-        # Save plot
-        sanitized_col = sanitize_filename(col)
-        output_path = os.path.join(
-            output_folder, f"{sanitized_col}_histogram.png")
-        plt.savefig(output_path, bbox_inches='tight', dpi=300,
-                    pad_inches=0.3)  # Added padding for annotations
-        plt.close()
-        print(f"Saved histogram to {output_path}")
+    return corr_matrix
 
 
-# HELPER FUNCTION gia ta counts twn label klp
 def count_categories_in_column(data, column_name):
     """
     Counts the occurrences of each category in the specified column.
@@ -457,52 +406,20 @@ def count_categories_in_column(data, column_name):
     return category_counts
 
 
-def plot_flag_distributions(data):  # TODO mallon thelei diagrafh auto
-    """
-    Creates bar plots for flag columns showing counts grouped by Label
-    """
-    # Select flag columns
-    flag_columns = [
-        'FIN Flag Count', 'SYN Flag Count', 'PSH Flag Count',
-        'ACK Flag Count', 'URG Flag Count', 'CWR Flag Count',
-        'ECE Flag Count'
-    ]
+def extract_significant_correlations(corr_matrix, threshold=0.15):
+    label_correlations = corr_matrix[0]  # First row is Label
+    significant_features = [i for i, corr in enumerate(label_correlations)
+                            if abs(corr) > threshold and i != 0]
 
-    # Create output folder
-    output_folder = "flag_distributions"
-    os.makedirs(output_folder, exist_ok=True)
+    print(f"Features with correlation > {threshold} with Label:")
+    for i in significant_features:
+        print(f"Feature {i}: {label_correlations[i]:.4f}")
 
-    # Convert to pandas
-    df = data.to_pandas()
-
-    for flag in flag_columns:
-        plt.figure(figsize=(12, 6))
-
-        # Create grouped bar plot
-        df_grouped = df.groupby(['Label', flag])[flag].count().unstack()
-        df_grouped.plot(kind='bar', stacked=True)
-
-        plt.title(f'Distribution of {flag} by Label')
-        plt.xlabel('Label')
-        plt.ylabel('Count')
-
-        # Add value labels on bars
-        for container in plt.gca().containers:
-            plt.bar_label(container)
-
-        plt.xticks(rotation=45)
-        plt.legend(title=flag)
-        plt.tight_layout()
-
-        # Save plot
-        output_path = os.path.join(
-            output_folder, f"{sanitize_filename(flag)}_distribution.png")
-        plt.savefig(output_path, bbox_inches='tight', dpi=300)
-        plt.close()
-        print(f"Saved flag distribution to {output_path}")
+    return significant_features
 
 
-def calculate_correlation_matrix(data):  # WORKING
+def calculate_correlation_matrix(data):
+    # WORKING
     columns_to_drop_NO_VARIANCE = [
         "Bwd PSH Flags",
         "Bwd URG Flags",
@@ -512,30 +429,186 @@ def calculate_correlation_matrix(data):  # WORKING
     ]
 
     # Drop from the main DataFrame
-    data = data.drop(columns_to_drop_NO_VARIANCE)
+    try:
+        data = data.drop(columns_to_drop_NO_VARIANCE)
+    except Exception as e:
+        print(f"Warning when dropping predefined columns: {e}")
+        # Continue with available columns
 
+    # Select numeric columns
     numeric_data = data.select(
         [col for col, dtype in data.schema.items() if dtype in (pl.Float64, pl.Int64)]
     )
+
+    print(f"Working with {len(numeric_data.columns)} numeric columns")
+
+    # Check for and remove zero variance columns
+    columns_to_drop = []
     for col in numeric_data.columns:
         # Calculate variance for the column
         variance = numeric_data.select(pl.col(col)).var(
         ).to_numpy().item()  # Convert to scalar value
-
-    # Check if variance is zero
+        # Check if variance is zero
         if variance == 0:
             print(f"Column {col} has zero variance.")
+            columns_to_drop.append(col)
 
+    # Drop columns with zero variance
+    if columns_to_drop:
+        numeric_data = numeric_data.drop(columns_to_drop)
+        print(
+            f"Dropped {len(columns_to_drop)} additional columns with zero variance.")
+
+    # Calculate correlation matrix
     corr_matrix = numeric_data.corr()
 
-    # Save the correlation matrix to a .txt file
-    # Convert the Polars DataFrame to a Pandas DataFrame
+    # Convert to pandas for analysis and saving
     corr_matrix_pd = corr_matrix.to_pandas()
-    # Save the correlation matrix to a .txt file using pandas
+
+    # Print the shape to verify
+    print(f"Correlation matrix shape: {corr_matrix_pd.shape}")
+
+    # Debug: Print the first few column names
+    print("First 5 column names:", corr_matrix_pd.columns[:5].tolist())
+
+    # Make lists of column and index names - IMPORTANT: we use the actual names from the pandas DataFrame
+    all_columns = corr_matrix_pd.columns.tolist()
+
+    # DEBUG: Check if index and columns are the same
+    if not all(corr_matrix_pd.index == corr_matrix_pd.columns):
+        print("WARNING: Index and columns in correlation matrix do not match!")
+
+    # 1. Find top positive correlations using numpy operations (more efficient)
+    top_positive_corrs = []
+    corr_np = corr_matrix_pd.to_numpy()
+
+    # Create masks for the correlation matrix
+    np.fill_diagonal(corr_np, 0)  # Mask self-correlations
+    high_corr_mask = corr_np > 0.8
+
+    if high_corr_mask.any():
+        # Get indices of high correlations
+        high_corr_indices = np.where(high_corr_mask)
+
+        # Create list of (col1, col2, corr_value)
+        for i, j in zip(high_corr_indices[0], high_corr_indices[1]):
+            col1 = all_columns[i]
+            col2 = all_columns[j]
+            corr_value = corr_np[i, j]
+            top_positive_corrs.append((col1, col2, corr_value))
+
+        # Sort by correlation strength
+        top_positive_corrs.sort(key=lambda x: x[2], reverse=True)
+
+    # 2. Find top negative correlations (similar approach)
+    top_negative_corrs = []
+    low_corr_mask = corr_np < -0.8
+
+    if low_corr_mask.any():
+        # Get indices of low correlations
+        low_corr_indices = np.where(low_corr_mask)
+
+        # Create list of (col1, col2, corr_value)
+        for i, j in zip(low_corr_indices[0], low_corr_indices[1]):
+            col1 = all_columns[i]
+            col2 = all_columns[j]
+            corr_value = corr_np[i, j]
+            top_negative_corrs.append((col1, col2, corr_value))
+
+        # Sort by correlation strength
+        top_negative_corrs.sort(key=lambda x: x[2])
+
+    # 3. Identify feature clusters using numpy (more efficient)
+    threshold = 0.9
+    abs_corr_np = np.abs(corr_np)
+    # Set diagonal to 0 to avoid self-correlations
+    np.fill_diagonal(abs_corr_np, 0)
+
+    feature_clusters = []
+    processed_indices = set()
+
+    for i in range(len(all_columns)):
+        if i in processed_indices:
+            continue
+
+        # Find all columns highly correlated with column i
+        correlated_indices = np.where(abs_corr_np[i] > threshold)[0]
+
+        # If there are any correlations above threshold
+        if len(correlated_indices) > 0:
+            # Add current index to the cluster
+            cluster_indices = [i] + correlated_indices.tolist()
+            # Convert indices to feature names
+            cluster = [all_columns[idx] for idx in cluster_indices]
+            # Add to clusters
+            feature_clusters.append(cluster)
+            # Mark as processed
+            processed_indices.update(cluster_indices)
+
+    # 4. Save valuable information to separate files
+    # Save top positive correlations
+    if top_positive_corrs:
+        with open('top_positive_correlations.txt', 'w') as f:
+            f.write("Feature 1\tFeature 2\tCorrelation\n")
+            for col1, col2, corr in top_positive_corrs[:20]:  # Save top 20
+                f.write(f"{col1}\t{col2}\t{corr:.4f}\n")
+        print("Top positive correlations saved to 'top_positive_correlations.txt'")
+
+    # Save top negative correlations
+    if top_negative_corrs:
+        with open('top_negative_correlations.txt', 'w') as f:
+            f.write("Feature 1\tFeature 2\tCorrelation\n")
+            for col1, col2, corr in top_negative_corrs[:20]:  # Save top 20
+                f.write(f"{col1}\t{col2}\t{corr:.4f}\n")
+        print("Top negative correlations saved to 'top_negative_correlations.txt'")
+
+    # Save feature clusters
+    if feature_clusters:
+        with open('feature_clusters.txt', 'w') as f:
+            f.write("Features that are highly correlated (r > 0.9):\n")
+            for i, cluster in enumerate(feature_clusters):
+                f.write(f"Cluster {i+1}: {', '.join(cluster)}\n")
+        print("Feature clusters saved to 'feature_clusters.txt'")
+
+    # 5. Generate a simplified correlation matrix with only important features
+    # Extract unique features from clusters (one per cluster)
+    important_features = []
+    clustered_features = set()
+
+    # Add one feature from each cluster
+    for cluster in feature_clusters:
+        important_features.append(cluster[0])
+        clustered_features.update(cluster)
+
+    # Add features that aren't part of any cluster
+    for feature in all_columns:
+        if feature not in clustered_features:
+            important_features.append(feature)
+
+    # Create a simplified correlation matrix if we have a reasonable number of important features
+    if len(important_features) < len(all_columns) and len(important_features) > 5:
+        try:
+            # Ensure all features are in the DataFrame
+            valid_features = [
+                f for f in important_features if f in all_columns and f in corr_matrix_pd.index]
+            simplified_matrix = corr_matrix_pd.loc[valid_features,
+                                                   valid_features]
+            simplified_matrix.to_csv(
+                'simplified_correlation_matrix.txt', sep='\t', header=True, index=True)
+            print(
+                f"Simplified correlation matrix with {len(valid_features)} features saved")
+        except Exception as e:
+            print(f"Error creating simplified matrix: {e}")
+    else:
+        print(
+            "Skipping simplified matrix creation - too few features or not enough reduction")
+
+    # Save the full correlation matrix to a .txt file using pandas
     corr_matrix_pd.to_csv('correlation_matrix.txt',
                           sep='\t', header=True, index=True)
+    print("Full correlation matrix saved to 'correlation_matrix.txt'")
 
-    print("Correlation matrix saved to 'correlation_matrix.txt'")
+    return corr_matrix
 
 
 def main():
@@ -543,17 +616,19 @@ def main():
     df = load_data_from_csv_parquet_format(file_name)
 
     if df is not None:
+        print("Just for it to work")
         # 1. Analyze data
         # count_categories_in_column(df, 'Label')
-        # plot_histograms_grouped_by_column(df, 'Label') # Grouped Histograms by column Label
+        # Grouped Histograms by column Label
+        # plot_histograms_grouped_by_column(df, 'Traffic Type')
         # plot_histograms_grouped_by_column(df) # Ungrouped Histograms
-        # calculate_correlation_matrix(df)
+        # calculate_feature_correlations(df)
 
         # Grouped Boxplots by column Label
-        #plot_boxplots_grouped_by_column(df, 'Label')
+        # plot_boxplots_grouped_by_column(df, 'Label')
 
         # Ungrouped Boxplots
-        plot_boxplots_grouped_by_column(df)
+        # plot_boxplots_grouped_by_column(df)
 
 
 if __name__ == "__main__":
