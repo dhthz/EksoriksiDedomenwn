@@ -3,6 +3,7 @@ import numpy as np
 from scipy import stats
 import polars as pl
 from paradoteo_A1 import load_data_from_csv_parquet_format
+from paradoteo_A2 import hdbscan_sampling, calculate_new_data_set_preservation_statistics
 
 
 def analyze_variance_with_pca(original_df, reduced_df, sample_size=1000000):
@@ -367,7 +368,10 @@ def main():
         )
         df_reduced = df.select(selected_features)
         # Use only selected features for the rest of your analysis
-        metrics = analyze_variance_with_pca(df, df_reduced)
+        hdbscan_dataset = hdbscan_sampling(df_reduced)
+        calculate_new_data_set_preservation_statistics(
+            df, hdbscan_dataset, 'hdbscan')
+        # metrics = analyze_variance_with_pca(df, df_reduced)
         # Continue with your sampling methods on the reduced dataset
         # ...
 

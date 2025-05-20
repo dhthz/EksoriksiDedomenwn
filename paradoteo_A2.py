@@ -326,8 +326,9 @@ def kmeans_sampling(data, sample_size=10000, random_seed=42):
 
 
 def hdbscan_sampling(data, sample_size=10000, random_seed=42):
-    """Simple HDBSCAN sampling."""
+    """HDBSCAN sampling with pre-sampling for very large strata."""
     print("DOING HDBSCAN SAMPLING")
+
     # Create stratification column
     if 'Label' in data.columns:
         if 'Traffic Type' in data.columns:
@@ -344,12 +345,43 @@ def hdbscan_sampling(data, sample_size=10000, random_seed=42):
         (pl.col("count") / data.height * sample_size).round().cast(pl.Int64).alias("target"))
     counts = counts.with_columns(pl.max_horizontal(
         pl.col("target"), 1).alias("target"))
+
     print("ENTERING FOR:")
     results = []
     print(counts)
+    # Define threshold for pre-sampling
+    large_group_threshold = 70000  # 1 million
+    pre_sample_size = 30000  # 100k
+
     for row in counts.to_dicts():
         group_data = data.filter(pl.col("strat_group") == row["strat_group"])
         target = min(row["target"], row["count"])
+        print(
+            f"Processing group: {row['strat_group']} with {row['count']} rows")
+        # Check if this group is very large and needs pre-sampling
+        if row["count"] > large_group_threshold:
+            print(
+                f"Large group detected: {row['strat_group']} with {row['count']} rows")
+            print(
+                f"Pre-sampling to {pre_sample_size} rows using stratified sampling")
+
+            # Determine which columns to use for stratification
+            strat_cols = []
+            strat_cols.append("Label")
+            strat_cols.append("Traffic Type")
+
+            # Apply stratified sampling to reduce the size
+            if strat_cols:
+                print(f"Using stratification columns: {strat_cols}")
+                # Use your existing stratified sampling function
+                group_data = stratified_sampling_multicolumn(
+                    group_data, strat_cols, sample_size=pre_sample_size, random_seed=random_seed)
+            else:
+                # Fall back to random sampling if no stratification columns
+                group_data = group_data.sample(
+                    n=pre_sample_size, seed=random_seed)
+
+            print(f"Pre-sampled to {group_data.height} rows")
 
         # Get numeric columns
         numeric_cols = [col for col in group_data.columns
@@ -363,54 +395,60 @@ def hdbscan_sampling(data, sample_size=10000, random_seed=42):
 
             # Run HDBSCAN
             print("RUNNING SCAN")
-            clusterer = hdbscan.HDBSCAN(min_cluster_size=5).fit(X)
+            # Adjust min_cluster_size based on group size
+            min_cluster_size = max(5, min(50, len(X) // 100))
+            clusterer = hdbscan.HDBSCAN(
+                min_cluster_size=min_cluster_size).fit(X)
 
             # Sample points from each cluster
             sample_indices = []
 
             # Get unique clusters (excluding noise points)
             clusters = np.unique(clusterer.labels_[clusterer.labels_ >= 0])
-            print("RUNNING SCAN FOR")
+            print(f"Found {len(clusters)} clusters")
+
             # For each cluster, sample proportionally
             for cluster in clusters:
-                points = np.where(clusterer.labels_ == cluster)[0]
-                n_samples = max(
-                    1, int(len(points) / group_data.height * target))
-                n_samples = min(n_samples, len(points))
-                np.random.seed(random_seed + cluster)
-                sample_indices.extend(np.random.choice(
-                    points, size=n_samples, replace=False))
-            # Add noise points if needed
+                cluster_points = np.where(clusterer.labels_ == cluster)[0]
+                # Calculate how many to sample from this cluster
+                cluster_target = max(
+                    1, int(len(cluster_points) / len(X) * target))
+                # Choose samples
+                if len(cluster_points) <= cluster_target:
+                    sample_indices.extend(cluster_points)
+                else:
+                    sample_indices.extend(np.random.choice(
+                        cluster_points, cluster_target, replace=False))
+
+            # Handle noise points (label -1) if not enough samples
             if len(sample_indices) < target:
                 noise_points = np.where(clusterer.labels_ == -1)[0]
                 if len(noise_points) > 0:
-                    n_noise = min(target - len(sample_indices),
-                                  len(noise_points))
-                    np.random.seed(random_seed)
-                    sample_indices.extend(np.random.choice(
-                        noise_points, size=n_noise, replace=False))
+                    remaining = target - len(sample_indices)
+                    noise_sample = np.random.choice(
+                        noise_points, min(remaining, len(noise_points)), replace=False)
+                    sample_indices.extend(noise_sample)
 
-            # If still not enough, add random points
-            if len(sample_indices) < target:
-                remaining = np.array(
-                    list(set(range(group_data.height)) - set(sample_indices)))
-                if len(remaining) > 0:
-                    n_more = min(target - len(sample_indices), len(remaining))
-                    np.random.seed(random_seed)
-                    sample_indices.extend(np.random.choice(
-                        remaining, size=n_more, replace=False))
-            print("TAKING SAMPLE")
-
-            # Take sample
+            # Take sample based on indices
+            sample_indices = sample_indices[:target]
             results.append(group_data.sample(
-                n=len(sample_indices[:target]), seed=random_seed, with_replacement=False))
+                n=len(sample_indices), seed=random_seed))
 
         except Exception as e:
             print(f"HDBSCAN error: {e}. Using random sampling.")
             results.append(group_data.sample(n=target, seed=random_seed))
 
-    # Combine and drop stratification column
-    result = pl.concat(results).drop("strat_group")
+    # Now concat will work since all DataFrames have the same columns
+    # This should be OUTSIDE the for loop, with proper indentation
+    result = result.drop("strat_group")
+    result = pl.concat(results)
+
+    # Drop the stratification column
+
+    output_path = "hdbscan_sampled_data.csv"
+    print(f"Saving results to {output_path}")
+    result.write_csv(output_path)
+
     print(f"Created {result.height} row HDBSCAN sample")
     return result
 
@@ -421,7 +459,7 @@ def main():
 
     if df is not None:  # TODO DONT RUN NEEDS CHANGES TO HIGH COUNTS , Tha kanoume stratified sampling sta megal prin ksekinisei to kmeans kai hdbscan
         # hdbscan_dataset = hdbscan_sampling(df)
-        # kmeans_dataset = kmeans_sampling(df)
+        kmeans_dataset = kmeans_sampling(df)
 
         # calculate_new_data_set_preservation_statistics(
         #     df, kmeans_dataset, 'kMeans')
