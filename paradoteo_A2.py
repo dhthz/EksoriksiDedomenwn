@@ -264,7 +264,7 @@ def calculate_new_data_set_preservation_statistics(df, dfAfterSampling, fileName
         print("Validation metrics saved to validation_metrics.txt")
 
 
-def kmeans_sampling(data, sample_size=5000, random_seed=42):
+def kmeans_sampling(data, sample_size=10000, random_seed=42):
     """Simple K-means sampling using scikit-learn."""
     print("RUNNING KMENANS  SAMPLING")
 
@@ -325,7 +325,7 @@ def kmeans_sampling(data, sample_size=5000, random_seed=42):
     return result
 
 
-def hdbscan_sampling(data, sample_size=5000, random_seed=42):
+def hdbscan_sampling(data, sample_size=10000, random_seed=42):
     """Simple HDBSCAN sampling."""
     print("DOING HDBSCAN SAMPLING")
     # Create stratification column
