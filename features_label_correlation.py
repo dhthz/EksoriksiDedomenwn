@@ -22,38 +22,40 @@ def get_problematic_features():
 
 
 def analyze_feature_label_correlation(df, features, label_column, visualize=False):
-   
+
     results = []
     
     # Check if label column exists
     if label_column not in df.columns:
         raise ValueError(f"Label column '{label_column}' not found in DataFrame")
     
-    # Convert to numpy for statistical functions
-    label_array = df.select(label_column).to_numpy().flatten()
+    # Define explicit label mapping
+    label_mapping = {'Benign': 0, 'Malicious': 1}
     
-    # Check if we have a binary label
-    unique_labels = np.unique(label_array)
-    if len(unique_labels) != 2:
-        print(f"Warning: Expected binary labels but found {len(unique_labels)} unique values")
+    # Verify all labels are either Benign or Malicious
+    unique_labels = df.select(label_column).unique().to_series().to_list()
+    unknown_labels = set(unique_labels) - set(label_mapping.keys())
+    if unknown_labels:
+        raise ValueError(f"Found unexpected labels: {unknown_labels}")
     
+    # Encode labels using explicit mapping with Polars
+    label_array = (df.select(pl.col(label_column))
+                    .to_series()
+                    .replace(label_mapping)  # Using replace instead of map_dict
+                    .to_numpy())
+    print(f"Label mapping: {label_mapping}")
+
     for col in features:
         if col not in df.columns:
             print(f"Warning: Feature '{col}' not found in DataFrame, skipping")
             continue
 
         try:
-            # Extract feature and check if numeric
-            feature_dtype = df.select(col).dtypes[0]
-            if not (pl.datatypes.is_numeric(feature_dtype)):
-                print(f"Warning: Feature '{col}' is not numeric, skipping")
-                continue
-            
-            # Convert feature to numpy array for statistical functions
-            feature_array = df.select(col).to_numpy().flatten()
+            # Extract feature as Float64
+            feature_array = df.select(pl.col(col).cast(pl.Float64)).to_series().to_numpy()
             
             # Handle NaN values
-            valid_indices = ~np.isnan(feature_array) & ~np.isnan(label_array)
+            valid_indices = ~np.isnan(feature_array)
             clean_feature = feature_array[valid_indices]
             clean_label = label_array[valid_indices]
             
@@ -101,6 +103,7 @@ def analyze_feature_label_correlation(df, features, label_column, visualize=Fals
 
         except Exception as e:
             print(f"Error processing {col}: {str(e)}")
+            continue
 
     if not results:
         print("No valid feature-label correlations were found")
@@ -130,7 +133,25 @@ def main():
     # for feature in problematic_features:
     #     print(f"- {feature}")
 
-    df = pl.read_parquet('data.parquet') 
+     # Load data and handle numeric columns
+    df = pl.read_parquet('data.parquet')
+    
+    # Identify numeric columns by trying to cast them
+    numeric_cols = []
+    for col in df.columns:
+        if col != 'Label':
+            try:
+                # Test if column can be cast to numeric
+                _ = df.select(pl.col(col).cast(pl.Float64))
+                numeric_cols.append(col)
+            except:
+                print(f"Warning: Skipping non-numeric column '{col}'")
+    
+    # Cast only the numeric columns to Float64
+    df = df.with_columns([
+        pl.col(col).cast(pl.Float64) for col in numeric_cols
+    ])
+    
     result_df = analyze_feature_label_correlation(df, problematic_features, label_column='Label', visualize=True)
     result_df.write_csv('feature_label_correlations.csv')
     print("\nResults saved to 'feature_label_correlations.csv'")
