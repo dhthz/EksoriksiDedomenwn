@@ -367,7 +367,7 @@ def calculate_feature_correlations(data):
     np.fill_diagonal(corr_values, 0)  # Remove self-correlations
 
     # Find pairs with high absolute correlation
-    high_corr_indices = np.where(np.abs(corr_values) > 0.9)
+    high_corr_indices = np.where(np.abs(corr_values) > 0.7)
 
     # Save high correlation pairs to CSV
     with open(os.path.join(output_folder, "high_correlation_pairs.csv"), "w") as f:
@@ -622,7 +622,7 @@ def main():
         # Grouped Histograms by column Label
         # plot_histograms_grouped_by_column(df, 'Traffic Type')
         # plot_histograms_grouped_by_column(df) # Ungrouped Histograms
-        # calculate_feature_correlations(df)
+        calculate_feature_correlations(df)
 
         # Grouped Boxplots by column Label
         # plot_boxplots_grouped_by_column(df, 'Label')
