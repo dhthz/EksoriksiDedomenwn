@@ -32,28 +32,32 @@ for col in df.columns[1:]:
             value_of_50 = df.loc[df['statistic'] == '50%', col].values[0]
             value_of_75 = df.loc[df['statistic'] == '75%', col].values[0]
             
-            # gap = abs(mean_value - median_value)
-            # if gap > std_value:
-            #     mean_median_gap[col] = 'large gap'
+            gap = abs(mean_value - value_of_50)
+            if gap > std_value:
+                mean_median_gap[col] = 'large gap'
+            else:
+                mean_median_gap[col] = 'small gap'
                 
             if std_value >= 0.5 * mean_value:
                 large_std[col] = 'yes'
-
             else:
                 large_std[col] = 'no'
 
             iqr = value_of_75 - value_of_25
-            if max_value > value_of_75 + 1.5 * iqr: #if max > 5 * mean:
+            if max_value > 5 * value_of_50:
                 max_too_high[col] = 'yes'
 
             else:
                 max_too_high[col] = 'no'
 
-            if max_value > value_of_75 + 1.5 * iqr:
+            if max_value > value_of_75 + 1.5 * iqr and min_value < value_of_25 - 1.5*iqr:
+                long_tail_check[col] = 'Both tails'
+            elif max_value > value_of_75 + 1.5 * iqr:
                 long_tail_check[col] = 'Right long-tailed'
-            
             elif min_value < value_of_25 - 1.5*iqr:
                 long_tail_check[col] = 'Left long-tailed'
+            else:
+                long_tail_check[col] = 'Not long-tailed'
 
         except (ValueError, TypeError):
             # Handle non-numeric or invalid values
@@ -62,7 +66,7 @@ for col in df.columns[1:]:
             long_tail_check[col] = ''
         
 # Add the new row to the dataframe
-#df = pd.concat([df, pd.DataFrame([mean_median_gap])], ignore_index=True)
+df = pd.concat([df, pd.DataFrame([mean_median_gap])], ignore_index=True)
 df = pd.concat([df, pd.DataFrame([large_std])], ignore_index=True)
 df = pd.concat([df, pd.DataFrame([max_too_high])], ignore_index=True)
 df = pd.concat([df, pd.DataFrame([long_tail_check])], ignore_index=True)
