@@ -46,7 +46,6 @@ for col in df.columns[1:]:
             iqr = value_of_75 - value_of_25
             if max_value > 5 * value_of_50:
                 max_too_high[col] = 'yes'
-
             else:
                 max_too_high[col] = 'no'
 
