@@ -269,14 +269,9 @@ def kmeans_sampling(data, sample_size=10000, random_seed=42):
     print("RUNNING KMENANS  SAMPLING")
 
     # Create stratification column
-    if 'Label' in data.columns:
-        if 'Traffic Type' in data.columns:
-            data = data.with_columns(pl.concat_str([pl.col('Label'), pl.col('Traffic Type')],
-                                                   separator="_").alias("strat_group"))
-        else:
-            data = data.with_columns(pl.col('Label').alias("strat_group"))
-    else:
-        data = data.with_columns(pl.lit("all").alias("strat_group"))
+    data = data.with_columns(pl.concat_str([pl.col('Label'), pl.col('Traffic Type')],
+                                           separator="_").alias("strat_group"))
+
     print("GETTING COUNTS")
 
     # Get samples per group
@@ -285,18 +280,42 @@ def kmeans_sampling(data, sample_size=10000, random_seed=42):
         (pl.col("count") / data.height * sample_size).round().cast(pl.Int64).alias("target"))
     counts = counts.with_columns(pl.max_horizontal(
         pl.col("target"), 1).alias("target"))
-
+    large_group_threshold = 70000  # 1 million
+    pre_sample_size = 30000  # 100k
     results = []
     print("FIRST FOR")
     for row in counts.to_dicts():
         group_data = data.filter(pl.col("strat_group") == row["strat_group"])
         target = min(row["target"], row["count"])
+        print(
+            f"Processing group: {row['strat_group']} with {row['count']} rows")
+        # Check if this group is very large and needs pre-sampling
+        if row["count"] > large_group_threshold:
+            print(
+                f"Large group detected: {row['strat_group']} with {row['count']} rows")
+            print(
+                f"Pre-sampling to {pre_sample_size} rows using stratified sampling")
 
-        # Get numeric columns
+            # Determine which columns to use for stratification
+            strat_cols = []
+            strat_cols.append("Label")
+            strat_cols.append("Traffic Type")
+
+            # Apply stratified sampling to reduce the size
+            if strat_cols:
+                print(f"Using stratification columns: {strat_cols}")
+                # Use your existing stratified sampling function
+                group_data = stratified_sampling_multicolumn(
+                    group_data, strat_cols, sample_size=pre_sample_size, random_seed=random_seed)
+            else:
+                # Fall back to random sampling if no stratification columns
+                group_data = group_data.sample(
+                    n=pre_sample_size, seed=random_seed)
+
+            print(f"Pre-sampled to {group_data.height} rows")
         numeric_cols = [col for col in group_data.columns
                         if col not in ['Label', 'Traffic Type', 'strat_group']
                         and group_data.schema[col] in (pl.Float64, pl.Int64)]
-
         # Extract and scale features
         X = group_data.select(numeric_cols).fill_null(0).to_numpy()
         X = StandardScaler().fit_transform(X)
@@ -318,26 +337,44 @@ def kmeans_sampling(data, sample_size=10000, random_seed=42):
 
         results.append(group_data.sample(
             n=len(indices), seed=random_seed, with_replacement=False))
-    print("RESULT")
-    # Combine and drop stratification column
-    result = pl.concat(results).drop("strat_group")
-    print(f"Created {result.height} row K-means sample")
-    return result
+
+    if results:
+        # Find common columns across all DataFrames
+        all_columns = set(results[0].columns)
+        for df in results[1:]:
+            all_columns = all_columns.intersection(set(df.columns))
+
+        # Select only common columns from each DataFrame
+        aligned_results = []
+        for df in results:
+            # Drop strat_group if it exists, as we don't need it anymore
+            if "strat_group" in df.columns and "strat_group" not in all_columns:
+                df = df.drop("strat_group")
+
+            # Select only common columns
+            aligned_df = df.select([col for col in all_columns])
+            aligned_results.append(aligned_df)
+
+        # Now concat with aligned DataFrames
+        result = pl.concat(aligned_results)
+
+        output_path = "kmeans_sampled_data.csv"
+        print(f"Saving results to {output_path}")
+        result.write_csv(output_path)
+
+        print(f"Created {result.height} row kmeans sample")
+        return result
+    else:
+        print("No results to concatenate")
+        return None
 
 
 def hdbscan_sampling(data, sample_size=10000, random_seed=42):
-    """HDBSCAN sampling with pre-sampling for very large strata."""
     print("DOING HDBSCAN SAMPLING")
 
     # Create stratification column
-    if 'Label' in data.columns:
-        if 'Traffic Type' in data.columns:
-            data = data.with_columns(pl.concat_str([pl.col('Label'), pl.col('Traffic Type')],
-                                                   separator="_").alias("strat_group"))
-        else:
-            data = data.with_columns(pl.col('Label').alias("strat_group"))
-    else:
-        data = data.with_columns(pl.lit("all").alias("strat_group"))
+    data = data.with_columns(pl.concat_str([pl.col('Label'), pl.col('Traffic Type')],
+                                           separator="_").alias("strat_group"))
 
     # Get samples per group
     counts = data.group_by("strat_group").agg(pl.count())
@@ -346,9 +383,7 @@ def hdbscan_sampling(data, sample_size=10000, random_seed=42):
     counts = counts.with_columns(pl.max_horizontal(
         pl.col("target"), 1).alias("target"))
 
-    print("ENTERING FOR:")
     results = []
-    print(counts)
     # Define threshold for pre-sampling
     large_group_threshold = 70000  # 1 million
     pre_sample_size = 30000  # 100k
@@ -438,19 +473,36 @@ def hdbscan_sampling(data, sample_size=10000, random_seed=42):
             print(f"HDBSCAN error: {e}. Using random sampling.")
             results.append(group_data.sample(n=target, seed=random_seed))
 
-    # Now concat will work since all DataFrames have the same columns
-    # This should be OUTSIDE the for loop, with proper indentation
-    result = result.drop("strat_group")
-    result = pl.concat(results)
+    # Combine and drop stratification column , concat didnt work had to do this
+    if results:
+        # Find common columns across all DataFrames
+        all_columns = set(results[0].columns)
+        for df in results[1:]:
+            all_columns = all_columns.intersection(set(df.columns))
 
-    # Drop the stratification column
+        # Select only common columns from each DataFrame
+        aligned_results = []
+        for df in results:
+            # Drop strat_group if it exists, as we don't need it anymore
+            if "strat_group" in df.columns and "strat_group" not in all_columns:
+                df = df.drop("strat_group")
 
-    output_path = "hdbscan_sampled_data.csv"
-    print(f"Saving results to {output_path}")
-    result.write_csv(output_path)
+            # Select only common columns
+            aligned_df = df.select([col for col in all_columns])
+            aligned_results.append(aligned_df)
 
-    print(f"Created {result.height} row HDBSCAN sample")
-    return result
+        # Now concat with aligned DataFrames
+        result = pl.concat(aligned_results)
+
+        output_path = "hdbscan_sampled_data.csv"
+        print(f"Saving results to {output_path}")
+        result.write_csv(output_path)
+
+        print(f"Created {result.height} row HDBSCAN sample")
+        return result
+    else:
+        print("No results to concatenate")
+        return None
 
 
 def main():
@@ -458,13 +510,13 @@ def main():
     df = load_data_from_csv_parquet_format(file_name)
 
     if df is not None:  # TODO DONT RUN NEEDS CHANGES TO HIGH COUNTS , Tha kanoume stratified sampling sta megal prin ksekinisei to kmeans kai hdbscan
-        # hdbscan_dataset = hdbscan_sampling(df)
-        kmeans_dataset = kmeans_sampling(df)
+        hdbscan_dataset = hdbscan_sampling(df)
+        calculate_new_data_set_preservation_statistics(
+            df, hdbscan_dataset, 'hdbscan')
+        # kmeans_dataset = kmeans_sampling(df)
 
         # calculate_new_data_set_preservation_statistics(
         #     df, kmeans_dataset, 'kMeans')
-        # calculate_new_data_set_preservation_statistics(
-        #     df, hdbscan_dataset, 'hdbscan')
 
 
 if __name__ == "__main__":
