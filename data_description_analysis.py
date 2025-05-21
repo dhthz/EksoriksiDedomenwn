@@ -12,6 +12,7 @@ shutil.copy2(original_file, analysis_file)
 df = pd.read_csv(analysis_file)
 n_rows = len(df)
 
+mean_max_min_equal = {'statistic' : 'mean_max_min_equal'}
 mean_median_gap = {'statistic' : 'mean_median_gap'}
 large_std = {'statistic' : 'large_std'}
 max_too_high = {'statistic' : 'max_too_high'}
@@ -32,6 +33,12 @@ for col in df.columns[1:]:
             value_of_50 = df.loc[df['statistic'] == '50%', col].values[0]
             value_of_75 = df.loc[df['statistic'] == '75%', col].values[0]
             
+            # Check if mean, max, and min are equal
+            if mean_value == max_value and mean_value == min_value:
+                mean_max_min_equal[col] = 'yes'
+            else:
+                mean_max_min_equal[col] = 'no'
+
             gap = abs(mean_value - value_of_50)
             if gap > std_value:
                 mean_median_gap[col] = 'large gap'
@@ -60,11 +67,13 @@ for col in df.columns[1:]:
 
         except (ValueError, TypeError):
             # Handle non-numeric or invalid values
+            mean_max_min_equal[col] = ''
             large_std[col] = ''   
             max_too_high[col] = ''  
             long_tail_check[col] = ''
         
 # Add the new row to the dataframe
+df = pd.concat([df, pd.DataFrame([mean_max_min_equal])], ignore_index=True)
 df = pd.concat([df, pd.DataFrame([mean_median_gap])], ignore_index=True)
 df = pd.concat([df, pd.DataFrame([large_std])], ignore_index=True)
 df = pd.concat([df, pd.DataFrame([max_too_high])], ignore_index=True)

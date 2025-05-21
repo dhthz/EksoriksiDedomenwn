@@ -77,10 +77,13 @@ def analyze_feature_label_correlation(df, features, label_column, visualize=Fals
     if unknown_labels:
         raise ValueError(f"Found unexpected labels: {unknown_labels}")
     
-    # Encode labels using explicit mapping with Polars
-    df = df.with_columns(
-        pl.col(label_column).map_dict(label_mapping).alias('encoded_label')
-    )
+    # Encode labels using match_literal instead of map_dict
+    df = df.with_columns([
+        pl.when(pl.col(label_column) == "Benign")
+          .then(pl.lit(0))
+          .otherwise(pl.lit(1))
+          .alias("encoded_label")
+    ])
     
     # Create output directory for plots if needed
     if visualize:
