@@ -10,6 +10,8 @@ import pandas as pd
 import os
 import json
 from paradoteo_A1 import load_data_from_csv_parquet_format
+import warnings  # To remove some warnings that dont cause an error
+warnings.filterwarnings('ignore')
 
 
 def evaluate_binary_classification(data_samples):
@@ -160,14 +162,98 @@ def evaluate_multiclass_classification(data_samples):
 
             # Class distribution
             unique_classes, counts = np.unique(y, return_counts=True)
+            class_distribution = {}
+            rare_classes = []
+
             print("Class distribution:")
             for cls, count in zip(unique_classes, counts):
-                print(f"  {cls}: {count} samples ({count/len(y)*100:.2f}%)")
+                class_pct = count/len(y)*100
+                print(f"  {cls}: {count} samples ({class_pct:.2f}%)")
+                class_distribution[str(cls)] = float(class_pct)
 
-            # Split data with stratification
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=0.25, random_state=42, stratify=y
-            )
+                if count <= 2:  # Consider classes with ≤3 samples as rare
+                    rare_classes.append(cls)
+
+            # Handle rare classes specially
+            if rare_classes:
+                print(
+                    f"Found {len(rare_classes)} rare classes with ≤3 samples")
+
+                # Store indices of rare class samples
+                rare_indices = np.array([], dtype=int)
+                for cls in rare_classes:
+                    cls_indices = np.where(y == cls)[0]
+                    rare_indices = np.append(rare_indices, cls_indices)
+
+                if len(rare_indices) > 0:
+                    # Split non-rare samples normally
+                    non_rare_mask = ~np.isin(np.arange(len(y)), rare_indices)
+                    X_common, X_rare = X[non_rare_mask], X[rare_indices]
+                    y_common, y_rare = y[non_rare_mask], y[rare_indices]
+
+                    # Split common classes
+                    X_train, X_test, y_train, y_test = train_test_split(
+                        X_common, y_common, test_size=0.25, random_state=42, stratify=y_common
+                    )
+
+                    # Split rare classes, ensuring at least one in both training and test sets
+                    X_rare_train, X_rare_test = [], []
+                    y_rare_train, y_rare_test = [], []
+
+                    # For each rare class, divide samples between train and test
+                    for cls in rare_classes:
+                        cls_indices = np.where(y_rare == cls)[0]
+                        n_samples = len(cls_indices)
+
+                        if n_samples == 1:
+                            # If only one sample, add to training
+                            X_rare_train.append(X_rare[cls_indices[0]])
+                            y_rare_train.append(cls)
+                        elif n_samples == 2:
+                            # If two samples, add one to training, one to test
+                            X_rare_train.append(X_rare[cls_indices[0]])
+                            y_rare_train.append(cls)
+                            X_rare_test.append(X_rare[cls_indices[1]])
+                            y_rare_test.append(cls)
+                        else:
+                            # If more than two, split 70/30
+                            n_train = max(1, int(n_samples * 0.7))
+                            train_indices = cls_indices[:n_train]
+                            test_indices = cls_indices[n_train:]
+
+                            for idx in train_indices:
+                                X_rare_train.append(X_rare[idx])
+                                y_rare_train.append(cls)
+
+                            for idx in test_indices:
+                                X_rare_test.append(X_rare[idx])
+                                y_rare_test.append(cls)
+
+                    # Convert lists to arrays
+                    if X_rare_train:
+                        X_rare_train = np.array(X_rare_train)
+                        y_rare_train = np.array(y_rare_train)
+                        # Add rare classes to training set
+                        X_train = np.vstack([X_train, X_rare_train])
+                        y_train = np.append(y_train, y_rare_train)
+
+                    if X_rare_test:
+                        X_rare_test = np.array(X_rare_test)
+                        y_rare_test = np.array(y_rare_test)
+                        # Add rare classes to test set
+                        X_test = np.vstack([X_test, X_rare_test])
+                        y_test = np.append(y_test, y_rare_test)
+
+                    print(f"Added rare samples to both training and test sets")
+                    print(
+                        f"  Training: {len(y_rare_train)} samples from {len(np.unique(y_rare_train))} rare classes")
+                    print(
+                        f"  Testing: {len(y_rare_test)} samples from {len(np.unique(y_rare_test))} rare classes")
+            else:
+                # Standard split if no rare classes
+                X_train, X_test, y_train, y_test = train_test_split(
+                    X, y, test_size=0.25, random_state=42, stratify=y
+                )
 
             # Standardize features
             scaler = StandardScaler()
@@ -183,19 +269,67 @@ def evaluate_multiclass_classification(data_samples):
             # Predict
             y_pred = svm_model.predict(X_test_scaled)
 
-            # Calculate metrics
+            # Check which classes are in the test set
+            test_classes = np.unique(y_test)
+            train_classes = np.unique(y_train)
+            print(
+                f"Classes in training set: {len(train_classes)} out of {len(unique_classes)}")
+            print(
+                f"Classes in test set: {len(test_classes)} out of {len(unique_classes)}")
+
+            # Print a warning if some classes aren't in test set
+            missing_classes = set(unique_classes) - set(test_classes)
+            if missing_classes:
+                print(
+                    f"Warning: {len(missing_classes)} classes not in test set: {missing_classes}")
+
+            # Calculate overall metrics
             accuracy = accuracy_score(y_test, y_pred)
             weighted_precision = precision_score(
-                y_test, y_pred, average='weighted')
-            weighted_recall = recall_score(y_test, y_pred, average='weighted')
-            weighted_f1 = f1_score(y_test, y_pred, average='weighted')
+                y_test, y_pred, average='weighted', zero_division=0)
+            weighted_recall = recall_score(
+                y_test, y_pred, average='weighted', zero_division=0)
+            weighted_f1 = f1_score(
+                y_test, y_pred, average='weighted', zero_division=0)
+
+            # Calculate per-class metrics
+            report = classification_report(
+                y_test, y_pred, output_dict=True, zero_division=0)
+
+            # Store class-specific metrics
+            class_metrics = {}
+            for cls in test_classes:
+                cls_str = str(cls)
+                if cls_str in report:
+                    class_metrics[cls_str] = {
+                        'precision': report[cls_str]['precision'],
+                        'recall': report[cls_str]['recall'],
+                        'f1-score': report[cls_str]['f1-score'],
+                        'support': report[cls_str]['support']
+                    }
+
+            # Add training-only class information
+            for cls in train_classes:
+                if cls not in test_classes:
+                    cls_str = str(cls)
+                    class_metrics[cls_str] = {
+                        'precision': 0.0,
+                        'recall': 0.0,
+                        'f1-score': 0.0,
+                        'support': 0,
+                        'training_only': True,
+                        'training_samples': np.sum(y_train == cls)
+                    }
 
             # Store results
             results[sample_name] = {
                 'accuracy': accuracy,
                 'weighted_precision': weighted_precision,
                 'weighted_recall': weighted_recall,
-                'weighted_f1': weighted_f1
+                'weighted_f1': weighted_f1,
+                'class_distribution': class_distribution,
+                'class_metrics': class_metrics,
+                'rare_classes': [str(cls) for cls in rare_classes]
             }
 
             # Print confusion matrix
@@ -203,18 +337,68 @@ def evaluate_multiclass_classification(data_samples):
             print("\nConfusion Matrix:")
             print(conf_matrix)
 
+            # Optionally, create a more readable confusion matrix with labels
+            if len(test_classes) < 10:  # Only for a reasonable number of classes
+                try:
+                    plt.figure(figsize=(10, 8))
+                    plt.imshow(conf_matrix, interpolation='nearest',
+                               cmap=plt.cm.Blues)
+                    plt.title(f"Confusion Matrix - {sample_name}")
+                    plt.colorbar()
+                    tick_marks = np.arange(len(test_classes))
+                    plt.xticks(tick_marks, test_classes, rotation=45)
+                    plt.yticks(tick_marks, test_classes)
+
+                    # Add text annotations
+                    thresh = conf_matrix.max() / 2
+                    for i in range(conf_matrix.shape[0]):
+                        for j in range(conf_matrix.shape[1]):
+                            plt.text(j, i, format(conf_matrix[i, j], 'd'),
+                                     ha="center", va="center",
+                                     color="white" if conf_matrix[i, j] > thresh else "black")
+
+                    plt.tight_layout()
+                    plt.ylabel('True label')
+                    plt.xlabel('Predicted label')
+
+                    # Save the confusion matrix
+                    os.makedirs('svm_results', exist_ok=True)
+                    plt.savefig(
+                        f'svm_results/confusion_matrix_{sample_name}.png')
+                    plt.close()
+                except Exception as e:
+                    print(
+                        f"Error creating confusion matrix visualization: {e}")
+
             # Print classification report
             print("\nClassification Report:")
-            print(classification_report(y_test, y_pred))
+            print(classification_report(y_test, y_pred, zero_division=0))
 
             # Print key metrics
-            print(f"Accuracy: {accuracy:.4f}")
+            print(f"Overall accuracy: {accuracy:.4f}")
             print(f"Weighted precision: {weighted_precision:.4f}")
             print(f"Weighted recall: {weighted_recall:.4f}")
             print(f"Weighted F1 score: {weighted_f1:.4f}")
 
+            # Print top/bottom 3 classes by F1 score (if we have many classes)
+            if len(test_classes) > 6:
+                print("\nTop performing classes (by F1 score):")
+                class_f1_scores = [(cls, report[cls]['f1-score'], report[cls]['support'])
+                                   for cls in report if cls not in ['accuracy', 'macro avg', 'weighted avg']]
+
+                # Top classes
+                for cls, f1, support in sorted(class_f1_scores, key=lambda x: x[1], reverse=True)[:3]:
+                    print(f"  {cls}: F1={f1:.4f}, Support={support}")
+
+                # Bottom classes
+                print("\nBottom performing classes (by F1 score):")
+                for cls, f1, support in sorted(class_f1_scores, key=lambda x: x[1])[:3]:
+                    print(f"  {cls}: F1={f1:.4f}, Support={support}")
+
         except Exception as e:
+            import traceback
             print(f"Error processing {sample_name} dataset: {e}")
+            print(traceback.format_exc())
             results[sample_name] = {'error': str(e)}
 
     return results
@@ -481,18 +665,18 @@ def diagnose_perfect_scores(df, X, y_binary, svm_model=None):
 if __name__ == "__main__":
     # Define data sample paths
     data_samples = {
-        'original': "stratified_sampling_files/sampled_data_10k",
+        # 'stratified_sampling': "sampled_data_10k_$stratified_sample",
         # 'kmeans': "kmeans_sampled_data",
-        # 'hdbscan': "hdbscan_files/hdbscan_sampled_data"
+        'hdbscan': "hdbscan_sampled_data"
     }
 
     # Run binary classification (malicious/benign)
     print("\n===== EVALUATING BINARY CLASSIFICATION (MALICIOUS/BENIGN) =====")
-    binary_results = evaluate_binary_classification(data_samples)
+    # binary_results = evaluate_binary_classification(data_samples)
 
     # # Run multi-class classification (traffic types)
     # print("\n===== EVALUATING MULTI-CLASS CLASSIFICATION (TRAFFIC TYPES) =====")
-    # multiclass_results = evaluate_multiclass_classification(data_samples)
+    multiclass_results = evaluate_multiclass_classification(data_samples)
 
     # # Save and visualize results
     # save_and_visualize_results(binary_results, multiclass_results)

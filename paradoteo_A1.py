@@ -56,12 +56,6 @@ def load_data_from_csv_parquet_format(file_name):  # CORRECT
     except FileNotFoundError:
         print(f"File not found: {file_name}")
         return None
-    except pl.errors.EmptyDataError:
-        print(f"No data: {file_name} is empty")
-        return None
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        return None
 
 
 def analyze_data(data):  # CORRECT
@@ -353,8 +347,9 @@ def calculate_feature_correlations(data):
     corr_df.columns = numeric_data.columns
 
     # Create output folder
-    output_folder = "feature_selection"
-    os.makedirs(output_folder, exist_ok=True)
+    if not os.path.exists("feature_selection"):
+        output_folder = "feature_selection"
+        os.makedirs(output_folder, exist_ok=True)
 
     # Save full correlation matrix as CSV
     corr_df.to_csv(os.path.join(output_folder, "full_correlation_matrix.csv"))
@@ -611,24 +606,32 @@ def calculate_correlation_matrix(data):
     return corr_matrix
 
 
-def main():
+def main():  # TODO REMOVE COMMENTS AND SOME PRINTS , CHECK FILE SAVING PATHS
     file_name = 'data'
     df = load_data_from_csv_parquet_format(file_name)
 
     if df is not None:
-        print("Just for it to work")
-        # 1. Analyze data
-        # count_categories_in_column(df, 'Label')
-        # Grouped Histograms by column Label
-        # plot_histograms_grouped_by_column(df, 'Traffic Type')
-        # plot_histograms_grouped_by_column(df) # Ungrouped Histograms
-        calculate_feature_correlations(df)
 
-        # Grouped Boxplots by column Label
-        # plot_boxplots_grouped_by_column(df, 'Label')
+        # Analyze data
+        analyze_data(df)
+
+        # Ungrouped Histograms Plotting
+        plot_histograms_grouped_by_column(df)
+
+        # Grouped Histograms by column Label
+        plot_histograms_grouped_by_column(df, 'Label')
+
+        # Grouped Histograms by column Traffice Type
+        plot_histograms_grouped_by_column(df, 'Traffic Type')
 
         # Ungrouped Boxplots
-        # plot_boxplots_grouped_by_column(df)
+        plot_boxplots_grouped_by_column(df)
+
+        # Grouped Boxplots by column Label
+        plot_boxplots_grouped_by_column(df, 'Label')
+
+        # Calculate correlations from whole dataset
+        calculate_feature_correlations(df)
 
 
 if __name__ == "__main__":

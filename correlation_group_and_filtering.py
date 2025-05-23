@@ -2,8 +2,10 @@ import pandas as pd
 import numpy as np
 from scipy import stats
 import polars as pl
+import os
 from paradoteo_A1 import load_data_from_csv_parquet_format
-from paradoteo_A2 import hdbscan_sampling, calculate_new_data_set_preservation_statistics, kmeans_sampling
+import warnings  # To remove some warnings that dont cause an error
+warnings.filterwarnings('ignore')
 
 
 def analyze_variance_with_pca(original_df, reduced_df, sample_size=1000000):
@@ -191,6 +193,119 @@ def analyze_variance_with_pca(original_df, reduced_df, sample_size=1000000):
         }
 
 
+def select_features_by_target_significance(groups):
+    """
+    Selects one feature from each correlation group based on correlations with Label and Traffic Type.
+
+    Args:
+        groups (dict): Dictionary mapping group IDs to lists of features
+
+    Returns:
+        list: List of selected features
+    """
+    print("Selecting features based on target significance...")
+    selected_features = []
+
+    # Load correlation matrix if it exists
+    if os.path.exists('correlation_comparison/original_correlations.csv'):
+        import pandas as pd
+        try:
+            # Load correlation matrix with first row as header
+            corr_matrix = pd.read_csv(
+                'correlation_comparison/original_correlations.csv')
+            print("Found correlation matrix file")
+
+            feature_names = corr_matrix.columns.tolist()
+
+            # Find index of Label and Traffic Type in column headers if they exist
+            label_index = -1
+            traffic_type_index = -1
+
+            for i, name in enumerate(feature_names):
+                if name == 'Label':
+                    label_index = i
+                elif name == 'Traffic Type':
+                    traffic_type_index = i
+
+            if label_index >= 0 and traffic_type_index >= 0:
+                # Initialize dictionaries to store correlations
+                label_corrs = {}
+                traffic_type_corrs = {}
+
+                # Extract correlations from the Label column
+                label_column = corr_matrix.iloc[:, label_index]
+                for i, feature_name in enumerate(feature_names):
+                    if feature_name != 'Label' and feature_name != 'Traffic Type':
+                        label_corrs[feature_name] = abs(
+                            float(label_column.iloc[i]))
+
+                # Extract correlations from the Traffic Type column
+                traffic_type_column = corr_matrix.iloc[:, traffic_type_index]
+                for i, feature_name in enumerate(feature_names):
+                    if feature_name != 'Label' and feature_name != 'Traffic Type':
+                        traffic_type_corrs[feature_name] = abs(
+                            float(traffic_type_column.iloc[i]))
+
+                print(
+                    f"Loaded correlations for {len(label_corrs)} features with Label")
+                print(
+                    f"Loaded correlations for {len(traffic_type_corrs)} features with Traffic Type")
+
+                # For each group, select the feature with highest combined correlation
+                for group_id, features in groups.items():
+                    best_feature = None
+                    highest_correlation = -1
+
+                    for feature in features:
+                        # Skip Label and Traffic Type
+                        if feature in ['Label', 'Traffic Type']:
+                            continue
+
+                        # Calculate combined significance score
+                        label_corr = label_corrs.get(feature, 0)
+                        traffic_corr = traffic_type_corrs.get(feature, 0)
+                        combined_score = label_corr + traffic_corr
+
+                        if combined_score > highest_correlation:
+                            highest_correlation = combined_score
+                            best_feature = feature
+
+                    if best_feature is not None:
+                        selected_features.append(best_feature)
+                        label_corr = label_corrs.get(best_feature, 0)
+                        traffic_corr = traffic_type_corrs.get(best_feature, 0)
+                        print(
+                            f"Group {group_id}: Selected {best_feature} (Label: {label_corr:.4f}, Traffic: {traffic_corr:.4f})")
+                    else:
+                        # Fallback to alphabetical selection if no correlation data
+                        sorted_features = sorted(features)
+                        selected_features.append(sorted_features[0])
+                        print(
+                            f"Group {group_id}: No correlation data, selected {sorted_features[0]}")
+            else:
+                print(
+                    "Could not find Label or Traffic Type columns in correlation matrix")
+                # Fallback to alphabetical selection
+                for group_id, features in groups.items():
+                    sorted_features = sorted(features)
+                    selected_features.append(sorted_features[0])
+
+        except Exception as e:
+            print(f"Error processing correlation file: {e}")
+            # Fallback to alphabetical selection
+            for group_id, features in groups.items():
+                sorted_features = sorted(features)
+                selected_features.append(sorted_features[0])
+    else:
+        print("No correlation matrix found. Using alphabetical selection.")
+        # Fallback to original selection method - alphabetical
+        for group_id, features in groups.items():
+            sorted_features = sorted(features)
+            selected_features.append(sorted_features[0])
+
+    return selected_features
+
+
 def simplified_feature_selection(data, correlation_pairs_file, threshold=0.7):
     """
     A simplified feature selection approach that runs faster.
@@ -206,7 +321,6 @@ def simplified_feature_selection(data, correlation_pairs_file, threshold=0.7):
     print("Running simplified feature selection...")
 
     # Create output directory
-    import os
     output_dir = "feature_selection_details"
     os.makedirs(output_dir, exist_ok=True)
 
@@ -263,11 +377,7 @@ def simplified_feature_selection(data, correlation_pairs_file, threshold=0.7):
             f.write(f"Group {group_id+1}: {', '.join(sorted(features))}\n\n")
 
     # Simple approach: select first feature from each group
-    selected_features = []
-    for group_id, features in groups.items():
-        # Sort features alphabetically for consistency
-        sorted_features = sorted(features)
-        selected_features.append(sorted_features[0])
+    selected_features = select_features_by_target_significance(groups)
 
     # Add features not in any group
     numeric_cols = [col for col in data.columns
@@ -372,7 +482,7 @@ def main():
         # calculate_new_data_set_preservation_statistics(
         #   df, hdbscan_dataset, 'hdbscan')
 
-        kmeans_dataset = kmeans_sampling(df_reduced)
+        kmeans_dataset = (df_reduced)
         calculate_new_data_set_preservation_statistics(
             df, kmeans_dataset, 'kmeans')
         # metrics = analyze_variance_with_pca(df, df_reduced)
