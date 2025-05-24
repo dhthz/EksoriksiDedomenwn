@@ -89,6 +89,8 @@ def stratified_sampling_multicolumn(data, columns, sample_size=100000, random_se
                 f"Created stratified sample with {stratified_sample.height} records")
             output_path = "sampled_data/stratified_sampled_data.csv"
             print(f"Saving results to {output_path}")
+            stratified_sample = stratified_sample.sample(
+                fraction=1.0, seed=42, shuffle=True)
             stratified_sample.write_csv(output_path)
         return stratified_sample
     else:
@@ -248,8 +250,6 @@ def populate_dataset_with_rare_classes(original_df, sampled_df, random_seed=42):
             "Traffic Type"].to_list()
 
         if rare_classes:
-            print(
-                f"Ensuring min 10 samples for {len(rare_classes)} classes with fewer than 10 samples")
 
             # Find the most common class
             most_common_row = class_counts.sort(
@@ -469,6 +469,7 @@ def kmeans_sampling(data, sample_size=10000, random_seed=42):
         result = populate_dataset_with_rare_classes(df, result)
         output_path = "sampled_data/sampled_data_kmeans_sample_data.csv"
         print(f"Saving results to {output_path}")
+        result = result.sample(fraction=1.0, seed=42, shuffle=True)
         result.write_csv(output_path)
 
         print(f"Created {result.height} row kmeans sample")
@@ -555,13 +556,13 @@ def hdbscan_sampling(data, sample_size=10000, random_seed=42):
                         cluster_points, cluster_target, replace=False))
 
             # Handle noise points (label -1) if not enough samples
-            # if len(sample_indices) < target:
-            #     noise_points = np.where(clusterer.labels_ == -1)[0]
-            #     if len(noise_points) > 0:
-            #         remaining = target - len(sample_indices)
-            #         noise_sample = np.random.choice(
-            #             noise_points, min(remaining, len(noise_points)), replace=False)
-            #         sample_indices.extend(noise_sample)
+            if len(sample_indices) < target:
+                noise_points = np.where(clusterer.labels_ == -1)[0]
+                if len(noise_points) > 0:
+                    remaining = target - len(sample_indices)
+                    noise_sample = np.random.choice(
+                        noise_points, min(remaining, len(noise_points)), replace=False)
+                    sample_indices.extend(noise_sample)
 
             # Take sample based on indices
             sample_indices = sample_indices[:target]
@@ -597,6 +598,7 @@ def hdbscan_sampling(data, sample_size=10000, random_seed=42):
 
         output_path = "sampled_data/hdbscan_sampled_data.csv"
         print(f"Saving results to {output_path}")
+        result = result.sample(fraction=1.0, seed=42, shuffle=True)
         result.write_csv(output_path)
 
         print(f"Created {result.height} row HDBSCAN sample")
@@ -620,7 +622,7 @@ def main():
         # Get the list of columns that will be kept from the original dataset
         selected_features = simplified_feature_selection(
             df,
-            'feature_selection/high_correlation_pairs_sorted.csv',
+            'feature_selection_details/high_correlation_pairs.csv',
             threshold=0.7
         )
 
@@ -633,23 +635,24 @@ def main():
         # Perform stratified sampling on the reduced_columns dataset
         stratified_sample = stratified_sampling_multicolumn(
             df_reduced_columns, ['Label', 'Traffic Type'], 10000)
+
         # Calculate preservation statistics for the stratified sample based on the original dataset
         calculate_new_data_set_preservation_statistics(
             df_reduced_columns, stratified_sample, 'stratified_sample')
 
-        # # Perform Kmeans sampling
-        # kmeans_dataset = kmeans_sampling(df_reduced_columns)
+        # Perform Kmeans sampling
+        kmeans_dataset = kmeans_sampling(df_reduced_columns)
 
-        # # Calculate preservation statistics for the kmeans sample based on the original dataset
-        # calculate_new_data_set_preservation_statistics(
-        #     df, kmeans_dataset, 'kMeans')
+        # Calculate preservation statistics for the kmeans sample based on the original dataset
+        calculate_new_data_set_preservation_statistics(
+            df, kmeans_dataset, 'kMeans')
 
-        # # # Perform HDBSCAN sampling
-        # hdbscan_dataset = hdbscan_sampling(df_reduced_columns)
+        # Perform HDBSCAN sampling
+        hdbscan_dataset = hdbscan_sampling(df_reduced_columns)
 
-        # # # Calculate preservation statistics for the hdbscan sample based on the original dataset
-        # calculate_new_data_set_preservation_statistics(
-        #     df, hdbscan_dataset, 'hdbscan')
+        # Calculate preservation statistics for the hdbscan sample based on the original dataset
+        calculate_new_data_set_preservation_statistics(
+            df, hdbscan_dataset, 'hdbscan')
 
 
 if __name__ == "__main__":

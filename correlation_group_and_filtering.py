@@ -3,7 +3,6 @@ import numpy as np
 from scipy import stats
 import polars as pl
 import os
-from paradoteo_A1 import load_data_from_csv_parquet_format
 import warnings  # To remove some warnings that dont cause an error
 warnings.filterwarnings('ignore')
 
@@ -179,25 +178,15 @@ def analyze_variance_with_pca(original_df, reduced_df, sample_size=1000000):
 
 
 def select_features_by_target_significance(groups):
-    """
-    Selects one feature from each correlation group based on correlations with Label and Traffic Type.
-
-    Args:
-        groups (dict): Dictionary mapping group IDs to lists of features
-
-    Returns:
-        list: List of selected features
-    """
     print("Selecting features based on target significance...")
     selected_features = []
 
     # Load correlation matrix if it exists
-    if os.path.exists('correlation_comparison/original_correlations.csv'):
-        import pandas as pd
+    if os.path.exists('feature_selection_details/full_correlation_matrix.csv'):
         try:
             # Load correlation matrix with first row as header
             corr_matrix = pd.read_csv(
-                'correlation_comparison/original_correlations.csv')
+                'feature_selection_details/full_correlation_matrix.csv')
 
             feature_names = corr_matrix.columns.tolist()
 
@@ -434,32 +423,3 @@ def dfs(node, adj_list, visited, group):
             dfs(neighbor, adj_list, visited, group)
 
             # In your main function
-
-
-def main():
-    file_name = 'data'
-    df = load_data_from_csv_parquet_format(file_name)
-
-    if df is not None:
-        # Select features for both Label and Traffic Type classification
-        selected_features = simplified_feature_selection(
-            df,
-            'feature_selection/high_correlation_pairs_sorted.csv',
-            threshold=0.7
-        )
-        df_reduced = df.select(selected_features)
-        # Use only selected features for the rest of your analysis
-        # hdbscan_dataset = hdbscan_sampling(df_reduced)
-        # calculate_new_data_set_preservation_statistics(
-        #   df, hdbscan_dataset, 'hdbscan')
-
-        kmeans_dataset = (df_reduced)
-        calculate_new_data_set_preservation_statistics(
-            df, kmeans_dataset, 'kmeans')
-        # metrics = analyze_variance_with_pca(df, df_reduced)
-        # Continue with your sampling methods on the reduced dataset
-        # ...
-
-
-if __name__ == "__main__":
-    main()

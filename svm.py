@@ -5,6 +5,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 from sklearn.metrics import (classification_report, confusion_matrix, accuracy_score,
                              precision_score, recall_score, f1_score, roc_auc_score)
+from sklearn.metrics.pairwise import euclidean_distances
 import matplotlib.pyplot as plt
 import pandas as pd
 import os
@@ -129,8 +130,8 @@ def evaluate_binary_classification(data_samples):
         except Exception as e:
             print(f"Error processing {sample_name} dataset: {e}")
             results[sample_name] = {'error': str(e)}
-    if svm_model is not None:
-        diagnose_perfect_scores(df, X, y_binary, svm_model)
+    # if svm_model is not None:
+        # diagnose_scores(df, X, y_binary, svm_model)
     return results
 
 
@@ -498,7 +499,7 @@ def save_and_visualize_results(binary_results, multiclass_results):
     return 'svm_results/'
 
 
-def diagnose_perfect_scores(df, X, y_binary, svm_model=None):
+def diagnose_scores(df, X, y_binary, svm_model=None):
     """
     Diagnostic function to investigate why a model might be getting perfect scores
 
@@ -508,8 +509,6 @@ def diagnose_perfect_scores(df, X, y_binary, svm_model=None):
         y_binary (np.ndarray): Binary target labels
         svm_model (sklearn model, optional): Trained model to analyze
     """
-    import numpy as np
-    from sklearn.metrics.pairwise import euclidean_distances
 
     print("\n===== DIAGNOSING CLASSIFICATION PERFORMANCE =====")
 
@@ -519,23 +518,6 @@ def diagnose_perfect_scores(df, X, y_binary, svm_model=None):
 
     print(
         f"Found {len(benign_indices)} benign samples and {len(malicious_indices)} malicious samples")
-
-    # 1. Check model coefficients (if available)
-    if svm_model is not None and hasattr(svm_model, 'coef_'):
-        print("\n1. FEATURE IMPORTANCE ANALYSIS (TOP 10 FEATURES):")
-
-        # For linear kernel
-        importance = np.abs(svm_model.coef_[0])
-        feature_names = [col for col in df.columns
-                         if col not in ['Label', 'Traffic Type']
-                         and df.schema[col] in (pl.Float64, pl.Int64, pl.Float32, pl.Int32)]
-
-        feature_importance = [(feature_names[i], importance[i])
-                              for i in range(len(importance))]
-        for feat, imp in sorted(feature_importance, key=lambda x: x[1], reverse=True)[:10]:
-            print(f"  {feat}: {imp:.4f}")
-    else:
-        print("\n1. FEATURE IMPORTANCE ANALYSIS: Not available for non-linear kernels")
 
     # 2. Statistical comparison of features between classes
     print("\n2. STATISTICAL COMPARISON OF KEY FEATURES:")
@@ -577,34 +559,6 @@ def diagnose_perfect_scores(df, X, y_binary, svm_model=None):
     for col, diff, b_mean, m_mean in sorted(top_diffs, key=lambda x: x[1], reverse=True)[:10]:
         print(
             f"  {col}: Benign mean={b_mean:.4f}, Malicious mean={m_mean:.4f}, Diff={diff:.4f}")
-
-    # 3. Check for perfect separators using X directly
-    print("\n3. CHECKING FOR POTENTIAL SEPARATOR FEATURES:")
-
-    # Check a sample of features
-    # Look at first 30 columns
-    for col_idx, col in enumerate(numeric_cols[:30]):
-        try:
-            if col_idx < X.shape[1]:
-                benign_vals = X[benign_indices, col_idx]
-                malicious_vals = X[np.random.choice(malicious_indices, min(
-                    1000, len(malicious_indices)), replace=False), col_idx]
-
-                benign_min = np.min(benign_vals)
-                benign_max = np.max(benign_vals)
-                malicious_min = np.min(malicious_vals)
-                malicious_max = np.max(malicious_vals)
-
-                # Check for non-overlapping ranges
-                if benign_max < malicious_min or benign_min > malicious_max:
-                    print(
-                        f"  {col} potentially separates benign from malicious:")
-                    print(
-                        f"    Benign range: {benign_min:.4f} to {benign_max:.4f}")
-                    print(
-                        f"    Malicious range: {malicious_min:.4f} to {malicious_max:.4f}")
-        except Exception as e:
-            print(f"  Error checking feature {col}: {e}")
 
     # 4. Check for duplicates
     print("\n4. CHECKING FOR DUPLICATE OR NEAR-DUPLICATE SAMPLES:")
@@ -650,7 +604,7 @@ def diagnose_perfect_scores(df, X, y_binary, svm_model=None):
                 print(
                     f"  Avg distance between benign and malicious samples: {np.mean(cross_dists):.4f}")
 
-                if np.min(cross_dists) > np.max(min_dists):
+                if np.min(cross_dists) > np.max(min_dists):  # TODO na bgoun ta siberasmata
                     print(
                         "  INSIGHT: Benign samples are closer to each other than to any malicious sample")
                     print("  This suggests benign traffic forms a distinct cluster")
@@ -659,26 +613,24 @@ def diagnose_perfect_scores(df, X, y_binary, svm_model=None):
 
     print("\n===== DIAGNOSIS COMPLETE =====\n")
 
-# At the end of each evaluate_* function, add:
-
 
 if __name__ == "__main__":
     # Define data sample paths
     data_samples = {
-        # 'stratified_sampling': "sampled_data_10k_$stratified_sample",
-        # 'kmeans': "kmeans_sampled_data",
-        'hdbscan': "hdbscan_sampled_data"
+        'stratified_sampling': "sampled_data/stratified_sampled_data",
+        'kmeans': "sampled_data/kmeans_sampled_data",
+        'hdbscan': "sampled_data/hdbscan_sampled_data"
     }
 
     # Run binary classification (malicious/benign)
     print("\n===== EVALUATING BINARY CLASSIFICATION (MALICIOUS/BENIGN) =====")
-    # binary_results = evaluate_binary_classification(data_samples)
+    binary_results = evaluate_binary_classification(data_samples)
 
-    # # Run multi-class classification (traffic types)
-    # print("\n===== EVALUATING MULTI-CLASS CLASSIFICATION (TRAFFIC TYPES) =====")
+    # Run multi-class classification (traffic types)
+    print("\n===== EVALUATING MULTI-CLASS CLASSIFICATION (TRAFFIC TYPES) =====")
     multiclass_results = evaluate_multiclass_classification(data_samples)
 
-    # # Save and visualize results
-    # save_and_visualize_results(binary_results, multiclass_results)
+    # Save and visualize results
+    save_and_visualize_results(binary_results, multiclass_results)
 
-    # print("\nEvaluation completed.")
+    print("\nEvaluation completed.")
