@@ -40,8 +40,6 @@ def stratified_sampling_multicolumn(data, columns, sample_size=100000, random_se
     group_counts = data.group_by("strat_group").agg(pl.count().alias("count"))
     total_records = data.height
 
-    print(f"Found {len(group_counts)} unique combinations")
-
     # Calculate target count for each stratum
     group_counts = group_counts.with_columns(
         (pl.col("count") / total_records * sample_size).alias("target_count")
@@ -100,7 +98,7 @@ def stratified_sampling_multicolumn(data, columns, sample_size=100000, random_se
 
 def validate_dataset_quality(original_df, sampled_df):
     """
-    Validates how well the sampled dataset preserves key characteristics of the original dataset.
+    Simplified validation of how well the sampled dataset preserves key characteristics.
 
     Args:
         original_df (pl.DataFrame): Original full dataset
@@ -109,126 +107,133 @@ def validate_dataset_quality(original_df, sampled_df):
     Returns:
         dict: Dictionary with quality metrics
     """
-    print("\nValidating dataset information preservation...")
+    print("\nValidating dataset quality...")
     metrics = {}
+    output_lines = ["Dataset Quality Validation Report", "=" * 50, ""]
 
-    # 1. Check class distribution preservation
+    # Check class distribution preservation for Label and Traffic Type
     for col in ['Label', 'Traffic Type']:
         if col in original_df.columns and col in sampled_df.columns:
-            print(f"\nDistribution of '{col}':")
+            header = f"\nDistribution comparison for '{col}':"
+            print(header)
+            output_lines.append(header.strip())
 
-            orig_dist = original_df.group_by(col).agg(pl.count()).with_columns(
-                (pl.col("count") / original_df.height * 100).alias("percentage")
-            )
+            # Get distributions with safe division
+            try:
+                orig_dist = original_df.group_by(
+                    col).agg(pl.len().alias("count"))
+                orig_total = original_df.height
 
-            sample_dist = sampled_df.group_by(col).agg(pl.count()).with_columns(
-                (pl.col("count") / sampled_df.height * 100).alias("percentage")
-            )
+                sample_dist = sampled_df.group_by(
+                    col).agg(pl.len().alias("count"))
+                sample_total = sampled_df.height
 
-            # Join the distributions
-            comparison = orig_dist.join(
-                sample_dist,
-                on=col,
-                how="outer",
-                suffix="_sample"
-            ).sort("count", descending=True)
+                # Calculate percentages with zero division protection
+                if orig_total > 0:
+                    orig_dist = orig_dist.with_columns(
+                        (pl.col("count") / orig_total * 100).alias("percentage")
+                    )
+                else:
+                    orig_dist = orig_dist.with_columns(
+                        pl.lit(0.0).alias("percentage"))
 
-            # Calculate distribution similarity
-            orig_percentages = comparison.select(
-                "percentage").to_numpy().flatten()
-            sample_percentages = comparison.select(
-                pl.col("percentage_sample").fill_null(0)).to_numpy().flatten()
+                if sample_total > 0:
+                    sample_dist = sample_dist.with_columns(
+                        (pl.col("count") / sample_total * 100).alias("percentage")
+                    )
+                else:
+                    sample_dist = sample_dist.with_columns(
+                        pl.lit(0.0).alias("percentage"))
 
-            # Jensen-Shannon divergence approximation (simpler than KL divergence) #TODO Check what this is
-            diff = sum(abs(o - s)
-                       for o, s in zip(orig_percentages, sample_percentages))
-            similarity = 100 - (diff / 2)  # Convert to similarity percentage
+                # Join distributions
+                comparison = orig_dist.join(
+                    sample_dist,
+                    on=col,
+                    how="outer",
+                    suffix="_sample"
+                ).fill_null(0)
 
-            metrics[f"{col}_distribution_similarity"] = similarity
-            print(f"  Distribution similarity: {similarity:.2f}%")
+                # Calculate simple similarity score
+                similarity_score = 0.0
+                total_classes = comparison.height
 
-            # Print comparison
-            for comp_row in comparison.to_dicts():
-                orig_pct = comp_row["percentage"]
-                sample_pct = comp_row.get(
-                    "percentage_sample", 0) if "percentage_sample" in comp_row else 0
-                print(
-                    f"  {comp_row[col]}: {orig_pct:.2f}% in original, {sample_pct:.2f}% in sample")
+                if total_classes > 0:
+                    for row in comparison.to_dicts():
+                        orig_pct = row.get("percentage", 0)
+                        sample_pct = row.get("percentage_sample", 0)
+                        # Simple difference metric (lower is better)
+                        diff = abs(orig_pct - sample_pct)
+                        similarity_score += max(0, 100 - diff)
 
-    # 2. Check numeric column distribution preservation
-    numeric_columns = [col for col in sampled_df.columns
-                       if col not in ['Label', 'Traffic Type'] and
-                       sampled_df.schema[col] in (pl.Float64, pl.Int64)]
+                    similarity_score = similarity_score / total_classes
+                else:
+                    similarity_score = 100.0
 
-    # Choose a few representative columns (for speed)
-    sample_cols = numeric_columns[:5]  # First 5 numeric columns
+                metrics[f'{col}_similarity'] = round(similarity_score, 2)
 
-    # Calculate basic statistics preservation
-    stats_similarity = []
-    for col in sample_cols:
-        print(f"\nBasic statistics for column '{col}':")
+                similarity_line = f"  Distribution similarity: {similarity_score:.2f}%"
+                print(similarity_line)
+                output_lines.append(similarity_line)
 
-        try:
-            # Original stats
-            orig_mean = original_df.select(pl.col(col).mean()).item()
-            orig_std = original_df.select(pl.col(col).std()).item()
-            orig_median = original_df.select(pl.col(col).median()).item()
+                # Print simple comparison
+                table_header = "  Class\t\tOriginal%\tSample%"
+                table_separator = "  " + "-" * 40
+                print(table_header)
+                print(table_separator)
+                output_lines.append(table_header)
+                output_lines.append(table_separator)
 
-            # Sample stats
-            sample_mean = sampled_df.select(pl.col(col).mean()).item()
-            sample_std = sampled_df.select(pl.col(col).std()).item()
-            sample_median = sampled_df.select(pl.col(col).median()).item()
+                for row in comparison.to_dicts():
+                    class_name = str(row[col])[:15]  # Truncate long names
+                    orig_pct = row.get("percentage", 0)
+                    sample_pct = row.get("percentage_sample", 0)
+                    table_row = f"  {class_name:<15}\t{orig_pct:.1f}%\t\t{sample_pct:.1f}%"
+                    print(table_row)
+                    output_lines.append(table_row)
 
-            # Calculate relative differences
-            mean_diff_pct = 100 * \
-                abs(orig_mean - sample_mean) / max(abs(orig_mean), 1e-10)
-            std_diff_pct = 100 * \
-                abs(orig_std - sample_std) / max(abs(orig_std), 1e-10)
-            median_diff_pct = 100 * \
-                abs(orig_median - sample_median) / max(abs(orig_median), 1e-10)
+                output_lines.append("")  # Add blank line
 
-            # Average similarity
-            avg_similarity = 100 - \
-                ((mean_diff_pct + std_diff_pct + median_diff_pct) / 3)
-            stats_similarity.append(avg_similarity)
+            except Exception as e:
+                error_line = f"  Error analyzing {col}: {e}"
+                print(error_line)
+                output_lines.append(error_line)
+                metrics[f'{col}_similarity'] = 0.0
 
-            print(
-                f"  Mean: {orig_mean:.3f} (original) vs {sample_mean:.3f} (sample), diff: {mean_diff_pct:.2f}%")
-            print(
-                f"  StdDev: {orig_std:.3f} (original) vs {sample_std:.3f} (sample), diff: {std_diff_pct:.2f}%")
-            print(
-                f"  Median: {orig_median:.3f} (original) vs {sample_median:.3f} (sample), diff: {median_diff_pct:.2f}%")
-            print(f"  Column similarity: {avg_similarity:.2f}%")
-        except Exception as e:
-            print(f"  Error calculating stats: {e}")
+    # Overall quality assessment
+    avg_similarity = 0.0
+    similarity_count = 0
 
-    # Average numeric column similarity
-    if stats_similarity:
-        metrics['numeric_stats_similarity'] = sum(
-            stats_similarity) / len(stats_similarity)
-        print(
-            f"\nOverall numeric distribution similarity: {metrics['numeric_stats_similarity']:.2f}%")
+    for key, value in metrics.items():
+        if '_similarity' in key:
+            avg_similarity += value
+            similarity_count += 1
 
-    # 3. Overall information preservation score
-    all_scores = list(metrics.values())
-    if all_scores:
-        overall_score = sum(all_scores) / len(all_scores)
-        metrics['overall_information_preservation'] = overall_score
+    if similarity_count > 0:
+        avg_similarity = avg_similarity / similarity_count
+        metrics['overall_quality'] = round(avg_similarity, 2)
 
-        print(
-            f"\nOVERALL INFORMATION PRESERVATION SCORE: {overall_score:.2f}%")
+        overall_line = f"Overall Quality: {avg_similarity:.2f}%"
+        print(f"\n{overall_line}")
+        output_lines.append(overall_line)
+    else:
+        metrics['overall_quality'] = 0.0
+        metrics['quality_rating'] = "UNKNOWN"
+        overall_line = "Overall Quality: Could not assess"
+        print(f"\n{overall_line}")
+        output_lines.append(overall_line)
 
-        if overall_score >= 95:  # TODO REMOVE Later
-            print(
-                "EXCELLENT: Sample preserves nearly all information from original dataset")
-        elif overall_score >= 90:
-            print("VERY GOOD: Sample preserves most important information")
-        elif overall_score >= 80:
-            print("GOOD: Sample preserves key information but with some differences")
-        elif overall_score >= 70:
-            print("FAIR: Sample shows notable differences from original data")
-        else:
-            print("POOR: Sample may not adequately represent original data")
+    # Basic size comparison
+    reduction_ratio = 0.0
+    if original_df.height > 0:
+        reduction_ratio = (1 - sampled_df.height / original_df.height) * 100
+
+    metrics['size_reduction'] = round(reduction_ratio, 2)
+    size_line = f"Size reduction: {reduction_ratio:.1f}% (from {original_df.height} to {sampled_df.height} rows)"
+    print(size_line)
+    output_lines.append(size_line)
+
+    # Add the captured output to metrics
+    metrics['validation_report'] = "\n".join(output_lines)
 
     return metrics
 
@@ -269,11 +274,6 @@ def populate_dataset_with_rare_classes(original_df, sampled_df, random_seed=42):
                 total_needed += needed
 
             print(f"Need to add {total_needed} samples in total")
-
-            # Check if we have enough samples in most common class to remove
-            if most_common_count <= total_needed:
-                print(f"Warning: Most common class only has {most_common_count} samples, " +
-                      f"which is less than the {total_needed} needed. Will use all available.")
 
             # Get additional samples from original data
             extra_rows = []
@@ -353,15 +353,10 @@ def populate_dataset_with_rare_classes(original_df, sampled_df, random_seed=42):
                         final_sample = pl.concat(
                             [filtered_sample, extra_samples])
 
-                        print(
-                            f"Added {total_added} samples and removed {n_to_remove} from class {most_common}")
-
                         # Print final counts
                         final_counts = final_sample.group_by(
                             "Traffic Type").agg(pl.len().alias("count"))
                         min_count = final_counts["count"].min()
-                        print(
-                            f"After balancing: minimum class count is {min_count}")
             return final_sample
         else:
             print("Error: No samples were generated!")
@@ -369,47 +364,21 @@ def populate_dataset_with_rare_classes(original_df, sampled_df, random_seed=42):
 
 
 def calculate_new_data_set_preservation_statistics(df, dfAfterSampling, file_name):
-    print(f"Loaded dataset with {df.height:,} rows and {df.width} columns")
 
     # Save a copy of the original dataset for validation
     df_before_sampling = df.clone()
-    # Drop columns with zero/low variance (optional)
-    if df.width > 30:  # Only if we have many columns
-        print("Removing low-variance columns...")
-        # Calculate variances
-        variances = {}
-        for col in df.columns:
-            if col not in ['Label', 'Traffic Type']:
-                try:
-                    var = df.select(pl.col(col).var()).item()
-                    variances[col] = var
-                except:
-                    variances[col] = 0
-        # Keep columns with non-zero variance and essential columns
-        essential_cols = ['Label', 'Traffic Type']
-        keep_cols = [col for col in df.columns if col in essential_cols or
-                     (col in variances and variances[col] > 0)]
-        df = df.select(keep_cols)
-        print(f"Reduced to {df.width} columns")
+    # Validate information preservation
+    validation_metrics = validate_dataset_quality(
+        df_before_sampling, dfAfterSampling)
 
-        # Validate information preservation
-        validation_metrics = validate_dataset_quality(
-            df_before_sampling, dfAfterSampling)
-
-        # Save validation metrics for reference
-        with open(f"validation_metrics/validation_metrics_{file_name}.txt", "w") as f:
-            f.write("Dataset Information Preservation Metrics:\n")
-            f.write("=======================================\n\n")
-            for key, value in validation_metrics.items():
-                f.write(f"{key}: {value:.2f}%\n")
-            f.write(
-                f"\nReduction ratio: {df.height / dfAfterSampling.height:.0f}:1")
-        print("Validation metrics saved to validation_metrics.txt")
+    # Save validation metrics for reference
+    with open(f"validation_metrics/validation_metrics_{file_name}.txt", "w") as f:
+        f.write(validation_metrics['validation_report'])
+    print("Validation metrics saved to validation_metrics.txt")
 
 
 def kmeans_sampling(data, sample_size=10000, random_seed=42):
-    """Simple K-means sampling using scikit-learn."""
-    print("RUNNING KMENANS  SAMPLING")
+    print("Starting kmeans sampling...")
 
     # Create stratification column
     data = data.with_columns(pl.concat_str([pl.col('Label'), pl.col('Traffic Type')],
@@ -427,12 +396,10 @@ def kmeans_sampling(data, sample_size=10000, random_seed=42):
     pre_sample_size = 30000
 
     results = []
-    print("FIRST FOR")
     for row in counts.to_dicts():
         group_data = data.filter(pl.col("strat_group") == row["strat_group"])
         target = min(row["target"], row["count"])
-        print(
-            f"Processing group: {row['strat_group']} with {row['count']} rows")
+
         # Check if this group is very large and needs pre-sampling
         if row["count"] > large_group_threshold:
             print(
@@ -450,27 +417,24 @@ def kmeans_sampling(data, sample_size=10000, random_seed=42):
                 print(f"Using stratification columns: {strat_cols}")
                 # Use your existing stratified sampling function
                 group_data = stratified_sampling_multicolumn(
-                    group_data, strat_cols, sample_size=pre_sample_size, random_seed=random_seed)
-            else:
-                # Fall back to random sampling if no stratification columns
-                group_data = group_data.sample(
-                    n=pre_sample_size, seed=random_seed)
+                    group_data, strat_cols, sample_size=pre_sample_size, random_seed=random_seed, mode=1)
 
             print(f"Pre-sampled to {group_data.height} rows")
+
         numeric_cols = [col for col in group_data.columns
                         if col not in ['Label', 'Traffic Type', 'strat_group']
                         and group_data.schema[col] in (pl.Float64, pl.Int64)]
+
         # Extract and scale features
         X = group_data.select(numeric_cols).fill_null(0).to_numpy()
         X = StandardScaler().fit_transform(X)
-        print("RUNNING KMENAS ")
+
         # Run K-means
         kmeans = KMeans(n_clusters=target, init='k-means++',
                         n_init=10, random_state=random_seed).fit(X)
 
         # Get points closest to centroids
         indices = []
-        print("RUNNING KMENAS for")
         for i, centroid in enumerate(kmeans.cluster_centers_):
             cluster_points = np.where(kmeans.labels_ == i)[0]
             if len(cluster_points) == 0:
@@ -515,7 +479,7 @@ def kmeans_sampling(data, sample_size=10000, random_seed=42):
 
 
 def hdbscan_sampling(data, sample_size=10000, random_seed=42):
-    print("DOING HDBSCAN SAMPLING")
+    print("Doing HDBSCAN sampling...")
     # Create stratification column
     data = data.with_columns(pl.concat_str([pl.col('Label'), pl.col('Traffic Type')],
                                            separator="_").alias("strat_group"))
@@ -535,8 +499,6 @@ def hdbscan_sampling(data, sample_size=10000, random_seed=42):
     for row in counts.to_dicts():
         group_data = data.filter(pl.col("strat_group") == row["strat_group"])
         target = min(row["target"], row["count"])
-        print(
-            f"Processing group: {row['strat_group']} with {row['count']} rows")
         # Check if this group is very large and needs pre-sampling
         if row["count"] > large_group_threshold:
             print(
@@ -551,14 +513,8 @@ def hdbscan_sampling(data, sample_size=10000, random_seed=42):
 
             # Apply stratified sampling to reduce the size
             if strat_cols:
-                print(f"Using stratification columns: {strat_cols}")
-                # Use your existing stratified sampling function
                 group_data = stratified_sampling_multicolumn(
                     group_data, strat_cols, sample_size=pre_sample_size, random_seed=random_seed, mode=1)
-            else:
-                # Fall back to random sampling if no stratification columns
-                group_data = group_data.sample(
-                    n=pre_sample_size, seed=random_seed)
 
             print(f"Pre-sampled to {group_data.height} rows")
 
@@ -573,7 +529,6 @@ def hdbscan_sampling(data, sample_size=10000, random_seed=42):
             X = StandardScaler().fit_transform(X)
 
             # Run HDBSCAN
-            print("RUNNING SCAN")
             # Adjust min_cluster_size based on group size
             min_cluster_size = max(5, min(50, len(X) // 100))
             clusterer = hdbscan.HDBSCAN(
@@ -600,13 +555,13 @@ def hdbscan_sampling(data, sample_size=10000, random_seed=42):
                         cluster_points, cluster_target, replace=False))
 
             # Handle noise points (label -1) if not enough samples
-            if len(sample_indices) < target:
-                noise_points = np.where(clusterer.labels_ == -1)[0]
-                if len(noise_points) > 0:
-                    remaining = target - len(sample_indices)
-                    noise_sample = np.random.choice(
-                        noise_points, min(remaining, len(noise_points)), replace=False)
-                    sample_indices.extend(noise_sample)
+            # if len(sample_indices) < target:
+            #     noise_points = np.where(clusterer.labels_ == -1)[0]
+            #     if len(noise_points) > 0:
+            #         remaining = target - len(sample_indices)
+            #         noise_sample = np.random.choice(
+            #             noise_points, min(remaining, len(noise_points)), replace=False)
+            #         sample_indices.extend(noise_sample)
 
             # Take sample based on indices
             sample_indices = sample_indices[:target]
@@ -673,14 +628,14 @@ def main():
         df_reduced_columns = df.select(selected_features)
 
         # Get statistics for the new dataset compared to the original by comparison using pca
-        # metrics = analyze_variance_with_pca(df, df_reduced_columns)
+        metrics = analyze_variance_with_pca(df, df_reduced_columns)
 
         # Perform stratified sampling on the reduced_columns dataset
-        # stratified_sample = stratified_sampling_multicolumn(
-        # df_reduced_columns, ['Label', 'Traffic Type'], 10000)
+        stratified_sample = stratified_sampling_multicolumn(
+            df_reduced_columns, ['Label', 'Traffic Type'], 10000)
         # Calculate preservation statistics for the stratified sample based on the original dataset
-        # calculate_new_data_set_preservation_statistics(
-        #    df_reduced_columns, stratified_sample, 'stratified_sample')
+        calculate_new_data_set_preservation_statistics(
+            df_reduced_columns, stratified_sample, 'stratified_sample')
 
         # # Perform Kmeans sampling
         # kmeans_dataset = kmeans_sampling(df_reduced_columns)
@@ -689,12 +644,12 @@ def main():
         # calculate_new_data_set_preservation_statistics(
         #     df, kmeans_dataset, 'kMeans')
 
-        # # Perform HDBSCAN sampling
-        hdbscan_dataset = hdbscan_sampling(df_reduced_columns)
+        # # # Perform HDBSCAN sampling
+        # hdbscan_dataset = hdbscan_sampling(df_reduced_columns)
 
-        # # Calculate preservation statistics for the hdbscan sample based on the original dataset
-        calculate_new_data_set_preservation_statistics(
-            df, hdbscan_dataset, 'hdbscan')
+        # # # Calculate preservation statistics for the hdbscan sample based on the original dataset
+        # calculate_new_data_set_preservation_statistics(
+        #     df, hdbscan_dataset, 'hdbscan')
 
 
 if __name__ == "__main__":

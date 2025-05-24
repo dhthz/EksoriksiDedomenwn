@@ -245,7 +245,7 @@ def plot_boxplots_grouped_by_column(data, column_name=None):
 
 
 # TODO Tha to kanoume gia sugkekrimena columns mallon
-def calculate_feature_correlations(data):
+def calculate_feature_correlations(data,):
     """
     Calculates correlations between all numeric features to identify redundant columns.
     Returns a correlation matrix and saves analysis files.
@@ -348,7 +348,7 @@ def calculate_feature_correlations(data):
 
     # Create output folder
     if not os.path.exists("feature_selection"):
-        output_folder = "feature_selection"
+        output_folder = "feature_selection_details/"
         os.makedirs(output_folder, exist_ok=True)
 
     # Save full correlation matrix as CSV

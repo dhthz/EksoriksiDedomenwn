@@ -162,21 +162,6 @@ def analyze_variance_with_pca(original_df, reduced_df, sample_size=1000000):
             f.write(
                 f"  Components needed for 80% variance (reduced): {reduced_80pct}\n\n")
 
-            f.write("Interpretation:\n")
-            if variance_at_reduced_count >= 95:
-                f.write(
-                    "EXCELLENT: Feature reduction preserved almost all important variance\n")
-            elif variance_at_reduced_count >= 90:
-                f.write(
-                    "VERY GOOD: Feature reduction preserved most important variance\n")
-            elif variance_at_reduced_count >= 80:
-                f.write("GOOD: Feature reduction preserved essential variance\n")
-            elif variance_at_reduced_count >= 70:
-                f.write(
-                    "FAIR: Some important variance lost but main structure preserved\n")
-            else:
-                f.write("POOR: Significant variance lost\n")
-
         print(f"PCA analysis completed. Results saved to {output_dir}/")
         print(
             f"Variance explained by reduced feature count: {variance_at_reduced_count:.2f}%")
@@ -213,7 +198,6 @@ def select_features_by_target_significance(groups):
             # Load correlation matrix with first row as header
             corr_matrix = pd.read_csv(
                 'correlation_comparison/original_correlations.csv')
-            print("Found correlation matrix file")
 
             feature_names = corr_matrix.columns.tolist()
 
@@ -246,11 +230,6 @@ def select_features_by_target_significance(groups):
                         traffic_type_corrs[feature_name] = abs(
                             float(traffic_type_column.iloc[i]))
 
-                print(
-                    f"Loaded correlations for {len(label_corrs)} features with Label")
-                print(
-                    f"Loaded correlations for {len(traffic_type_corrs)} features with Traffic Type")
-
                 # For each group, select the feature with highest combined correlation
                 for group_id, features in groups.items():
                     best_feature = None
@@ -274,21 +253,13 @@ def select_features_by_target_significance(groups):
                         selected_features.append(best_feature)
                         label_corr = label_corrs.get(best_feature, 0)
                         traffic_corr = traffic_type_corrs.get(best_feature, 0)
-                        print(
-                            f"Group {group_id}: Selected {best_feature} (Label: {label_corr:.4f}, Traffic: {traffic_corr:.4f})")
+
                     else:
                         # Fallback to alphabetical selection if no correlation data
                         sorted_features = sorted(features)
                         selected_features.append(sorted_features[0])
                         print(
                             f"Group {group_id}: No correlation data, selected {sorted_features[0]}")
-            else:
-                print(
-                    "Could not find Label or Traffic Type columns in correlation matrix")
-                # Fallback to alphabetical selection
-                for group_id, features in groups.items():
-                    sorted_features = sorted(features)
-                    selected_features.append(sorted_features[0])
 
         except Exception as e:
             print(f"Error processing correlation file: {e}")
@@ -307,17 +278,17 @@ def select_features_by_target_significance(groups):
 
 
 def simplified_feature_selection(data, correlation_pairs_file, threshold=0.7):
-    """
-    A simplified feature selection approach that runs faster.
+    columns_to_drop_NO_VARIANCE = [
+        "Bwd PSH Flags",
+        "Bwd URG Flags",
+        "Fwd Bytes/Bulk Avg",
+        "Fwd Packet/Bulk Avg",
+        "Fwd Bulk Rate Avg"
+    ]
 
-    Args:
-        data (pl.DataFrame): Your dataset
-        correlation_pairs_file (str): Path to correlation pairs CSV
-        threshold (float): Correlation threshold for grouping features
+    # Drop from the main DataFrame
 
-    Returns:
-        list: Selected features to keep
-    """
+    data = data.drop(columns_to_drop_NO_VARIANCE)
     print("Running simplified feature selection...")
 
     # Create output directory
