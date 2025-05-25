@@ -138,9 +138,21 @@ def train_neural_network(X_train, y_train, X_test, y_test, dataset_name, epochs=
     # Print results summary
     print(f"\nNeural Network Results for {dataset_name}:")
     print(f"Accuracy: {report['accuracy']:.4f}")
-    print(f"Precision: {report['1']['precision']:.4f}")
-    print(f"Recall: {report['1']['recall']:.4f}")
-    print(f"F1-Score: {report['1']['f1-score']:.4f}")
+    
+    # Check if class '1' exists in the report before trying to access it
+    if '1' in report:
+        print(f"Precision: {report['1']['precision']:.4f}")
+        print(f"Recall: {report['1']['recall']:.4f}")
+        print(f"F1-Score: {report['1']['f1-score']:.4f}")
+    else:
+        # Print metrics for whatever classes are available
+        print("Class '1' not found in results. Available classes:")
+        for class_label in report.keys():
+            if class_label not in ['accuracy', 'macro avg', 'weighted avg']:
+                print(f"Class '{class_label}' metrics:")
+                print(f"  Precision: {report[class_label]['precision']:.4f}")
+                print(f"  Recall: {report[class_label]['recall']:.4f}")
+                print(f"  F1-Score: {report[class_label]['f1-score']:.4f}")
     
     return model, history, report
 
@@ -266,7 +278,7 @@ def process_stratified_sample():
     # Convert string labels to numeric (crucial step)
     # If your labels are 'Malicious' and 'Benign', map them to 1 and 0
     if y_stratified.dtype == 'object':  # Check if labels are strings/objects
-        print("Converting string labels to numeric values...")
+        print("\nConverting string labels to numeric values...")
         label_map = {'Malicious': 1, 'Benign': 0}  # Adjust these values based on your actual labels
         y_stratified = y_stratified.map(label_map)
 
@@ -321,33 +333,28 @@ def process_stratified_sample():
     
     # Train Neural Network model
     input_shape = processed_data['X_train'].shape[1]
-    try:
-        nn_model, nn_history = train_neural_network(
-            processed_data['X_train'], 
-            processed_data['y_train'],
-            processed_data['X_test'],
-            processed_data['y_test'],
-            input_shape
-        )
-        
-        # Evaluate Neural Network
-        nn_eval = nn_model.evaluate(processed_data['X_test'], processed_data['y_test'])
-        nn_y_pred = (nn_model.predict(processed_data['X_test']) > 0.5).astype(int)
-        nn_results = classification_report(processed_data['y_test'], nn_y_pred, output_dict=True)
-        
-        # Print Neural Network summary
-        print(f"\nResults for Neural Network on stratified sample:")
-        print(f"Accuracy: {nn_results['accuracy']:.4f}")
-        print(f"Weighted F1: {nn_results['weighted avg']['f1-score']:.4f}")
-        
-        return preprocessor, constant_cols, nn_results
+
+    nn_model, nn_history, nn_report = train_neural_network(
+        processed_data['X_train'], 
+        processed_data['y_train'],
+        processed_data['X_test'],
+        processed_data['y_test'],
+        'stratified'
+    )
     
-    except Exception as e:
-        print(f"\nError training neural network: {str(e)}")
-        # Return what we have even if neural network training fails
-        return preprocessor, constant_cols, {
-            'rf_results': rf_results
-        }
+    # Evaluate Neural Network
+    nn_eval = nn_model.evaluate(processed_data['X_test'], processed_data['y_test'])
+    nn_y_pred = (nn_model.predict(processed_data['X_test']) > 0.5).astype(int)
+    nn_results = classification_report(processed_data['y_test'], nn_y_pred, output_dict=True)
+    
+    # Print Neural Network summary
+    print(f"\nResults for Neural Network on stratified sample:")
+    print(f"Accuracy: {nn_results['accuracy']:.4f}")
+    print(f"Weighted F1: {nn_results['weighted avg']['f1-score']:.4f}")
+    print('\nAccuracy, F1, Recall, AUC', nn_eval)
+
+    return preprocessor, constant_cols, nn_results
+
 
 # Process other Clustering samples using the fitted preprocessor 
 def process_clustering_samples(preprocessor, constant_cols):
@@ -356,7 +363,8 @@ def process_clustering_samples(preprocessor, constant_cols):
         'hdbscan': pd.read_csv('sampled_data/hdbscan_sampled_data.csv')
     }
     
-    results = {}
+    rf_results = {}  # For Random Forest results
+    nn_results = {}  # For Neural Network results
     
     for name, df in other_datasets.items():
         # Remove constant columns
@@ -365,12 +373,36 @@ def process_clustering_samples(preprocessor, constant_cols):
         # Split data
         X = df.drop('Label', axis=1)
         y = df['Label']
+
+            
+        # Convert string labels to numeric (crucial step)
+        # If your labels are 'Malicious' and 'Benign', map them to 1 and 0
+        if y.dtype == 'object':  # Check if labels are strings/objects
+            print("\nConverting string labels to numeric values...")
+            label_map = {'Malicious': 1, 'Benign': 0}  # Adjust these values based on your actual labels
+            y = y.map(label_map)
+
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
         
         # Use the ALREADY FITTED preprocessor
         X_train_processed = preprocessor.transform(X_train)
         X_test_processed = preprocessor.transform(X_test)
         
+        # Convert to numpy arrays with float32 dtype (crucial for TensorFlow)
+        X_train_processed = np.asarray(X_train_processed).astype('float32')
+        X_test_processed = np.asarray(X_test_processed).astype('float32')
+        y_train_processed = np.asarray(y_train).astype('float32')
+        y_test_processed = np.asarray(y_test).astype('float32')
+        
+        # Check for any remaining non-numeric values
+        if np.any(np.isnan(X_train_processed)) or np.any(np.isinf(X_train_processed)):
+            print(f"Warning: NaN or Inf values found in {name} training data. Replacing with zeros.")
+            X_train_processed = np.nan_to_num(X_train_processed)
+        
+        if np.any(np.isnan(X_test_processed)) or np.any(np.isinf(X_test_processed)):
+            print(f"Warning: NaN or Inf values found in {name} test data. Replacing with zeros.")
+            X_test_processed = np.nan_to_num(X_test_processed)
+
         # Store processed data
         processed_data = {
             'X_train': X_train_processed,
@@ -387,35 +419,71 @@ def process_clustering_samples(preprocessor, constant_cols):
         y_pred = clf.predict(processed_data['X_test'])
         
         # Store results
-        results[name] = classification_report(processed_data['y_test'], y_pred, output_dict=True)
+        rf_results[name] = classification_report(processed_data['y_test'], y_pred, output_dict=True)
         
         # Print summary
         print(f"\nResults for {name} sample:")
-        print(f"Accuracy: {results[name]['accuracy']:.4f}")
-        print(f"Weighted F1: {results[name]['weighted avg']['f1-score']:.4f}")
-    
-    return results
+        print(f"Accuracy: {rf_results[name]['accuracy']:.4f}")
+        print(f"Weighted F1: {rf_results[name]['weighted avg']['f1-score']:.4f}")
 
+        # Print data shapes and types before training neural network
+        print(f"\nTraining neural network with data shapes:")
+        print(f"X_train: {processed_data['X_train'].shape}, dtype: {processed_data['X_train'].dtype}")
+        print(f"y_train: {processed_data['y_train'].shape}, dtype: {processed_data['y_train'].dtype}")
+        
+        # Train Neural Network model
+        input_shape = processed_data['X_train'].shape[1]
+        try:
+            nn_model, nn_history, nn_report = train_neural_network(
+                processed_data['X_train'], 
+                processed_data['y_train'],
+                processed_data['X_test'],
+                processed_data['y_test'],
+                name
+            )
+            
+            # Store Neural Network results
+            nn_results[name] = nn_report
+            
+            # Print Neural Network summary
+            print(f"\nResults for Neural Network on clustering sample {name}:")
+            print(f"Accuracy: {nn_results['accuracy']:.4f}")
+            print(f"Weighted F1: {nn_results['weighted avg']['f1-score']:.4f}")
+
+        except Exception as e:
+                print(f"\nError training neural network: {str(e)}")
+                # Return what we have even if neural network training fails
+
+    return nn_results, rf_results
 
 def nn_binary_classification():
     # Process stratified sample first and get fitted preprocessor
     preprocessor, constant_cols, stratified_results = process_stratified_sample()
     
     # Process Clustering samples using the fitted preprocessor
-    clustering_results = process_clustering_samples(preprocessor, constant_cols)
+    nn_results, rf_results = process_clustering_samples(preprocessor, constant_cols)
     
     # Print comparative summary
     print("\n===== COMPARATIVE SUMMARY =====")
-    
+
+    # Print stratified results
     if 'nn_results' in stratified_results:
         print(f"STRATIFIED (Neural Network): Accuracy={stratified_results['nn_results']['accuracy']:.4f}, "
               f"F1={stratified_results['nn_results']['weighted avg']['f1-score']:.4f}")
+
+    # Print neural network results for clustering samples if available
+    if nn_results:
+        print("\nNeural Network Results:")
+        for name, results in nn_results.items():
+            print(f"{name.upper()}: Accuracy={results['accuracy']:.4f}, "
+                  f"F1={results['weighted avg']['f1-score']:.4f}")
     
-    # Print clustering sample results
-    for name, results in clustering_results.items():
+    # Print random forest results for clustering samples
+    print("\nRandom Forest Results:")
+    for name, results in rf_results.items():
         print(f"{name.upper()}: Accuracy={results['accuracy']:.4f}, "
               f"F1={results['weighted avg']['f1-score']:.4f}")
-    
+        
     return 
 
 
