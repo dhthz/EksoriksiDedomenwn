@@ -5,6 +5,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix
 from tensorflow import keras
 from tensorflow.keras import layers
 import matplotlib.pyplot as plt
@@ -18,23 +19,23 @@ from collections import Counter
 from sklearn.model_selection import StratifiedKFold
 
 # This function builds a binary classification neural network
-def build_binary_neural_network(input_shape, act, loss):
+def build_binary_neural_network(input_shape):
     model = keras.Sequential([
         # Input layer
         layers.Input(shape=(input_shape,)),
         
         # First hidden layer
-        layers.Dense(128, activation=act),
+        layers.Dense(128, activation='tanh'),
         layers.BatchNormalization(),
         layers.Dropout(0.3),
         
         # Second hidden layer
-        layers.Dense(64, act),
+        layers.Dense(64, activation='tanh'),
         layers.BatchNormalization(),
         layers.Dropout(0.2),
         
         # Third hidden layer
-        layers.Dense(32, act),
+        layers.Dense(32, activation='tanh'),
         layers.BatchNormalization(),
         layers.Dropout(0.1),
         
@@ -45,7 +46,7 @@ def build_binary_neural_network(input_shape, act, loss):
     # Compile the model
     model.compile(
         optimizer=keras.optimizers.Adam(learning_rate=0.001),
-        loss=loss,
+        loss='binary_crossentropy',
         metrics=[
             'accuracy',
             keras.metrics.Precision(name='precision'),
@@ -57,169 +58,164 @@ def build_binary_neural_network(input_shape, act, loss):
     return model
 
 # Function to train and evaluate neural network on a dataset
-def train_binary_neural_network(X_train, y_train, X_test, y_test, dataset_name, epochs=50):
+def train_binary_neural_network(X_train, y_train, X_test, y_test, dataset_name, epochs=200):
     print(f"\n===== STRATIFIED 5-FOLD CROSS-VALIDATION ON {dataset_name.upper()} =====")
     
     # Initialize Stratified K-Fold
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
     
-    
-
-    activation= ['swish', 'tanh', 'elu', 'prelu', layers.LeakyReLU(alpha=0.1)]
-    loss= ['binary_crossentropy', 'mse']
-    batch_size = [16, 32]
-    epochs = [50, 100, 150, 200]
+    # Store metrics for each fold
+    fold_metrics = []
+    fold_histories = []
+    fold_val_gaps = []
+    fold_generalization_metrics = []
 
     # Perform k-fold cross validation
-    for act in activation:
-        for l in loss:
-            for bs in batch_size:
-                for epoch in epochs:
-                    print(f"\n----- Training with Activation: {act}, Loss: {l}, Batch Size: {bs}, Epochs: {epoch} -----")
-                    
-                    # Store metrics for each fold
-                    fold_metrics = []
-                    fold_histories = []
-                    fold_val_gaps = []
-                    fold_generalization_metrics = []
-                    
-                    for fold, (train_idx, val_idx) in enumerate(skf.split(X_train, y_train)):
-                        print(f"\n----- Fold {fold+1}/5 -----")
-                        
-                        # Split data for this fold
-                        X_train_fold, X_val_fold = X_train[train_idx], X_train[val_idx]
-                        y_train_fold, y_val_fold = y_train[train_idx], y_train[val_idx]
+    for fold, (train_idx, val_idx) in enumerate(skf.split(X_train, y_train)):
+        print(f"\n----- Fold {fold+1}/5 -----")
+        
+        # Split data for this fold
+        X_train_fold, X_val_fold = X_train[train_idx], X_train[val_idx]
+        y_train_fold, y_val_fold = y_train[train_idx], y_train[val_idx]
 
-                        # Get input shape from training data
-                        input_shape = X_train_fold.shape[1]
-                        
-                        # Build the neural network
-                        model = build_binary_neural_network(input_shape, act, l)
-                        
-                        # Set up early stopping
-                        early_stopping = keras.callbacks.EarlyStopping(
-                            monitor='val_f1_score',  # Monitor F1 score instead of loss
-                            patience=15,  # Increased patience
-                            restore_best_weights=True,
-                            mode='max'  # Maximize F1 score
-                        )
-                        
-                        # Set up learning rate reduction
-                        lr_reduction = keras.callbacks.ReduceLROnPlateau(
-                            monitor='val_loss',
-                            factor=0.2,
-                            patience=5,
-                            min_lr=0.00001
-                        )
-                        
-                        # ADD CLASS WEIGHTS FOR ADDITIONAL BALANCING
-                        # Calculate class weights based on the training data
-                        neg, pos = np.bincount(y_train.astype(int))
-                        total = neg + pos
-                        weight_for_0 = (1 / neg) * (total / 2.0)
-                        weight_for_1 = (1 / pos) * (total / 2.0)
-                        class_weight = {0: weight_for_0, 1: weight_for_1}
-                        
-                        # print(f"\nClass weights: {class_weight}")
+        # Get input shape from training data
+        input_shape = X_train_fold.shape[1]
+        
+        # Build the neural network
+        model = build_binary_neural_network(input_shape)
+        
+        # Set up early stopping
+        early_stopping = keras.callbacks.EarlyStopping(
+            monitor='val_recall',     # Monitor recall instead of F1
+            patience=25,              # More patient
+            min_delta=0.001,          # Require meaningful improvement
+            mode='max',               # Maximize recall
+            restore_best_weights=True
+        )
+        
+        # Set up learning rate reduction - RECALL FOCUSED
+        lr_reduction = keras.callbacks.ReduceLROnPlateau(
+            monitor='val_recall',     # Monitor recall for LR reduction too
+            factor=0.5,               # Moderate reduction (50%)
+            patience=10,              # Patient with LR reduction
+            min_lr=1e-7,             # Allow very small learning rates
+            mode='max',              # Maximize recall
+            cooldown=3,              # Wait 3 epochs after reduction
+            verbose=1
+        )
 
-                        # Train the model
-                        history = model.fit(
-                            X_train_fold, y_train_fold,
-                            epochs=epoch,
-                            batch_size=bs,
-                            validation_data=(X_val_fold, y_val_fold),
-                            callbacks=[early_stopping, lr_reduction],
-                            # class_weight=class_weight, # ADD CLASS WEIGHTING
-                            verbose=1
-                        )
-                    
-                        # Evaluate the model
-                        model_evaluation = model.evaluate(X_val_fold, y_val_fold, verbose=0)
+        # Train the model
+        history = model.fit(
+            X_train_fold, y_train_fold,
+            epochs=200,
+            batch_size=32,
+            validation_data=(X_val_fold, y_val_fold),
+            callbacks=[early_stopping, lr_reduction],
+            verbose=1
+        )
+    
+        # Evaluate the model
+        model_evaluation = model.evaluate(X_val_fold, y_val_fold, verbose=0)
 
-                        # Calculate generalization metrics
-                        final_train_acc = history.history['accuracy'][-1]
-                        final_val_acc = history.history['val_accuracy'][-1]
-                        val_gap = final_train_acc - final_val_acc
-                    
-                        # Store results
-                        fold_metrics.append(model_evaluation)
-                        fold_histories.append(history.history)
-                        fold_val_gaps.append(val_gap)
+        # Calculate generalization metrics
+        final_train_acc = history.history['accuracy'][-1]
+        final_val_acc = history.history['val_accuracy'][-1]
+        val_gap = final_train_acc - final_val_acc
+    
+        # Store results
+        fold_metrics.append(model_evaluation)
+        fold_histories.append(history.history)
+        fold_val_gaps.append(val_gap)
 
-                        # Compile generalization metrics for this fold
-                        fold_gen = {
-                            'train_acc': final_train_acc,
-                            'val_acc': final_val_acc,
-                            'val_gap': val_gap,
-                            'loss': model_evaluation[0],
-                            'accuracy': model_evaluation[1],
-                            'precision': model_evaluation[2],
-                            'recall': model_evaluation[3],
-                            'auc': model_evaluation[4]
-                        }
-                        fold_generalization_metrics.append(fold_gen)
-                    
-                    # Calculate average metrics across all folds
-                    fold_metrics = np.array(fold_metrics)
-                    avg_metrics = np.mean(fold_metrics, axis=0)
-                    std_metrics = np.std(fold_metrics, axis=0)
-                    
-                    # Calculate average generalization gap
-                    avg_val_gap = np.mean(fold_val_gaps)
-                    std_val_gap = np.std(fold_val_gaps)
-                    
-                    # Print evaluation metrics
-                    print("\n===== CROSS-VALIDATION SUMMARY =====")
-                    print(f"Average Loss: {avg_metrics[0]:.4f} ± {std_metrics[0]:.4f}")
-                    print(f"Average Accuracy: {avg_metrics[1]:.4f} ± {std_metrics[1]:.4f}")
-                    print(f"Average Precision: {avg_metrics[2]:.4f} ± {std_metrics[2]:.4f}")
-                    print(f"Average Recall: {avg_metrics[3]:.4f} ± {std_metrics[3]:.4f}")
-                    print(f"Average AUC: {avg_metrics[4]:.4f} ± {std_metrics[4]:.4f}")
-                    print(f"Average Generalization Gap: {avg_val_gap:.4f} ± {std_val_gap:.4f}")
-                    
-                    # Create directory for saving results if it doesn't exist
-                    evaluation_dir = "binary_nn_training"
-                    if not os.path.exists(evaluation_dir):
-                        os.makedirs(evaluation_dir)
-                    
-                    # Save evaluation metrics to CSV
-                    csv_path = f"{evaluation_dir}/model-{act}-{l}-{bs}-{epoch}.csv"
-                    # Save average results
-                    with open(f"{csv_path}", 'w', newline='') as csvfile:
-                        writer = csv.writer(csvfile)
-                        writer.writerow(['Metric', 'Average', 'Std Dev'])
-                        writer.writerow(['Loss', avg_metrics[0], std_metrics[0]])
-                        writer.writerow(['Accuracy', avg_metrics[1], std_metrics[1]])
-                        writer.writerow(['Precision', avg_metrics[2], std_metrics[2]])
-                        writer.writerow(['Recall', avg_metrics[3], std_metrics[3]])
-                        writer.writerow(['AUC', avg_metrics[4], std_metrics[4]])
-                        writer.writerow(['Generalization Gap', avg_val_gap, std_val_gap])
-                    
-                    print(f"Evaluation metrics saved to {csv_path}")
+        # Compile generalization metrics for this fold
+        fold_gen = {
+            'train_acc': final_train_acc,
+            'val_acc': final_val_acc,
+            'val_gap': val_gap,
+            'loss': model_evaluation[0],
+            'accuracy': model_evaluation[1],
+            'precision': model_evaluation[2],
+            'recall': model_evaluation[3],
+            'auc': model_evaluation[4]
+        }
+        fold_generalization_metrics.append(fold_gen)
+    
+    # Calculate average metrics across all folds
+    fold_metrics = np.array(fold_metrics)
+    avg_metrics = np.mean(fold_metrics, axis=0)
+    std_metrics = np.std(fold_metrics, axis=0)
+    
+    # Calculate average generalization gap
+    avg_val_gap = np.mean(fold_val_gaps)
+    std_val_gap = np.std(fold_val_gaps)
+
+    y_pred = model.predict(X_test, verbose=0)
+    y_pred_classes = (y_pred > 0.5).astype(int)
+    
+    # Print evaluation metrics
+    print("\n===== CROSS-VALIDATION SUMMARY =====")
+    print(f"Average Loss: {avg_metrics[0]:.4f} ± {std_metrics[0]:.4f}")
+    print(f"Average Accuracy: {avg_metrics[1]:.4f} ± {std_metrics[1]:.4f}")
+    print(f"Average Precision: {avg_metrics[2]:.4f} ± {std_metrics[2]:.4f}")
+    print(f"Average Recall: {avg_metrics[3]:.4f} ± {std_metrics[3]:.4f}")
+    print(f"Average AUC: {avg_metrics[4]:.4f} ± {std_metrics[4]:.4f}")
+    print(f"Average Generalization Gap: {avg_val_gap:.4f} ± {std_val_gap:.4f}")
+    
+    # Create directory for saving results if it doesn't exist
+    evaluation_dir = "binary_nn_evaluation_and_plots"
+    if not os.path.exists(evaluation_dir):
+        os.makedirs(evaluation_dir)
+    
+    # Save evaluation metrics to CSV
+    csv_path = f"{evaluation_dir}/{dataset_name}_sample_binary_model.csv"
+    # Save average results
+    with open(f"{csv_path}", 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['Metric', 'Average', 'Std Dev'])
+        writer.writerow(['Loss', avg_metrics[0], std_metrics[0]])
+        writer.writerow(['Accuracy', avg_metrics[1], std_metrics[1]])
+        writer.writerow(['Precision', avg_metrics[2], std_metrics[2]])
+        writer.writerow(['Recall', avg_metrics[3], std_metrics[3]])
+        writer.writerow(['AUC', avg_metrics[4], std_metrics[4]])
+        writer.writerow(['Generalization Gap', avg_val_gap, std_val_gap])
+    
+    print(f"Evaluation metrics saved to {csv_path}")
     
     # Plot training history
-    # plt.figure(figsize=(12, 5))
+    plt.figure(figsize=(12, 5))
     
-    # # Plot training & validation accuracy
-    # plt.subplot(1, 2, 1)
-    # plt.plot(history.history['accuracy'])
-    # plt.plot(history.history['val_accuracy'])
-    # plt.title(f'Model Accuracy - {dataset_name}')
-    # plt.ylabel('Accuracy')
-    # plt.xlabel('Epoch')
-    # plt.legend(['Train', 'Validation'], loc='lower right')
+    # Plot training & validation accuracy
+    plt.subplot(1, 2, 1)
+    plt.plot(history.history['accuracy'])
+    plt.plot(history.history['val_accuracy'])
+    plt.title(f'Model Accuracy - {dataset_name}')
+    plt.ylabel('Accuracy')
+    plt.xlabel('Epoch')
+    plt.legend(['Train', 'Validation'], loc='lower right')
     
-    # # Plot training & validation loss
-    # plt.subplot(1, 2, 2)
-    # plt.plot(history.history['loss'])
-    # plt.plot(history.history['val_loss'])
-    # plt.title(f'Model Loss - {dataset_name}')
-    # plt.ylabel('Loss')
-    # plt.xlabel('Epoch')
-    # plt.legend(['Train', 'Validation'], loc='upper right')
-    # plt.tight_layout()
-    # plt.savefig(f'classification_nn_evaluation_and_plots/training_history_{dataset_name}.png')
+    # Plot training & validation loss
+    plt.subplot(1, 2, 2)
+    plt.plot(history.history['loss'])
+    plt.plot(history.history['val_loss'])
+    plt.title(f'Model Loss - {dataset_name}')
+    plt.ylabel('Loss')
+    plt.xlabel('Epoch')
+    plt.legend(['Train', 'Validation'], loc='upper right')
+    plt.tight_layout()
+    plt.savefig(f'{evaluation_dir}/training_history_{dataset_name}_sample.png')
     
+    # Create and save confusion matrix
+    plt.figure(figsize=(8, 6))
+    cm = confusion_matrix(y_test, y_pred_classes)
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+                xticklabels=['Benign', 'Malicious'],
+                yticklabels=['Benign', 'Malicious'])
+    plt.title(f'Confusion Matrix - {dataset_name}')
+    plt.ylabel('True Label')
+    plt.xlabel('Predicted Label')
+    plt.tight_layout()
+    plt.savefig(f'{evaluation_dir}/confusion_matrix_{dataset_name}.png')
+
     return model, history
 
 # Function for setting up feature columns and preprocessor
