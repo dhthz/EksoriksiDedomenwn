@@ -1,7 +1,7 @@
 import polars as pl
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import PowerTransformer, RobustScaler, OneHotEncoder, OrdinalEncoder
+from sklearn.preprocessing import PowerTransformer, RobustScaler, OneHotEncoder, OrdinalEncoder, StandardScaler
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer
@@ -29,22 +29,17 @@ def build_multiclass_neural_network(input_shape, num_classes):
         layers.Input(shape=(input_shape,)),
         
         # First hidden layer
-        layers.Dense(256, activation='relu'),
-        layers.BatchNormalization(),
-        layers.Dropout(0.4),
-        
-        # Second hidden layer
-        layers.Dense(128, activation='relu'),
+        layers.Dense(128, activation='elu'),
         layers.BatchNormalization(),
         layers.Dropout(0.3),
         
-        # Third hidden layer
-        layers.Dense(64, activation='relu'),
+        # Second hidden layer
+        layers.Dense(64, activation='elu'),
         layers.BatchNormalization(),
         layers.Dropout(0.2),
         
-        # Fourth hidden layer
-        layers.Dense(32, activation='relu'),
+        # Third hidden layer
+        layers.Dense(32, activation='elu'),
         layers.BatchNormalization(),
         layers.Dropout(0.1),
         
@@ -64,7 +59,7 @@ def build_multiclass_neural_network(input_shape, num_classes):
     return model
 
 # Function to train and evaluate multiclass neural network
-def train_multiclass_neural_network(X_train, y_train, X_test, y_test, dataset_name, class_names, epochs=100):
+def train_multiclass_neural_network(X_train, y_train, X_test, y_test, dataset_name, class_names, epochs=200):
     print(f"\n===== MULTICLASS TRAFFIC TYPE CLASSIFICATION ON {dataset_name.upper()} =====")
     
     # Initialize Stratified K-Fold
@@ -92,38 +87,31 @@ def train_multiclass_neural_network(X_train, y_train, X_test, y_test, dataset_na
         
         # Set up early stopping
         early_stopping = keras.callbacks.EarlyStopping(
-            monitor='val_loss',
-            patience=15,
+            monitor='val_recall',     # Monitor recall instead of F1
+            patience=25,              # More patient
+            min_delta=0.001,          # Require meaningful improvement
+            mode='max',               # Maximize recall
             restore_best_weights=True
         )
         
-        # Set up learning rate reduction
+        # Set up learning rate reduction - RECALL FOCUSED
         lr_reduction = keras.callbacks.ReduceLROnPlateau(
-            monitor='val_loss',
-            factor=0.2,
-            patience=8,
-            min_lr=0.00001
+            monitor='val_recall',     # Monitor recall for LR reduction too
+            factor=0.5,               # Moderate reduction (50%)
+            patience=10,              # Patient with LR reduction
+            min_lr=1e-7,             # Allow very small learning rates
+            mode='max',              # Maximize recall
+            cooldown=3,              # Wait 3 epochs after reduction
+            verbose=1
         )
-        
-        # Calculate class weights for imbalanced classes
-        from sklearn.utils.class_weight import compute_class_weight
-        class_weights = compute_class_weight(
-            'balanced',
-            classes=np.unique(y_train_fold),
-            y=y_train_fold
-        )
-        class_weight_dict = dict(enumerate(class_weights))
-        
-        print(f"Class weights: {class_weight_dict}")
 
         # Train the model
         history = model.fit(
             X_train_fold, y_train_fold,
             epochs=epochs,
-            batch_size=64,
+            batch_size=32,
             validation_data=(X_val_fold, y_val_fold),
             callbacks=[early_stopping, lr_reduction],
-            class_weight=class_weight_dict,
             verbose=1
         )
     
@@ -197,162 +185,162 @@ def train_multiclass_neural_network(X_train, y_train, X_test, y_test, dataset_na
         writer.writerow(['Generalization Gap', avg_val_gap, std_val_gap])
     
     print(f"Evaluation metrics saved to {csv_path}")
+        
+    # # Figure 1: Training and validation metrics
+    # plt.figure(figsize=(12, 6))
     
-    # Create separate plots
+    # # Plot training & validation accuracy
+    # plt.subplot(1, 2, 1)
+    # plt.plot(history.history['accuracy'])
+    # plt.plot(history.history['val_accuracy'])
+    # plt.title(f'Model Accuracy - {dataset_name}')
+    # plt.ylabel('Accuracy')
+    # plt.xlabel('Epoch')
+    # plt.legend(['Train', 'Validation'], loc='lower right')
     
-    # Figure 1: Training and validation metrics
-    plt.figure(figsize=(12, 6))
+    # # Plot training & validation loss
+    # plt.subplot(1, 2, 2)
+    # plt.plot(history.history['loss'])
+    # plt.plot(history.history['val_loss'])
+    # plt.title(f'Model Loss - {dataset_name}')
+    # plt.ylabel('Loss')
+    # plt.xlabel('Epoch')
+    # plt.legend(['Train', 'Validation'], loc='upper right')
     
-    # Plot training & validation accuracy
-    plt.subplot(1, 2, 1)
-    plt.plot(history.history['accuracy'])
-    plt.plot(history.history['val_accuracy'])
-    plt.title(f'Model Accuracy - {dataset_name}')
-    plt.ylabel('Accuracy')
-    plt.xlabel('Epoch')
-    plt.legend(['Train', 'Validation'], loc='lower right')
+    # plt.tight_layout()
+    # plt.savefig(f'{evaluation_dir}/multiclass_training_metrics_{dataset_name}.png', dpi=300, bbox_inches='tight')
+    # plt.close()
     
-    # Plot training & validation loss
-    plt.subplot(1, 2, 2)
-    plt.plot(history.history['loss'])
-    plt.plot(history.history['val_loss'])
-    plt.title(f'Model Loss - {dataset_name}')
-    plt.ylabel('Loss')
-    plt.xlabel('Epoch')
-    plt.legend(['Train', 'Validation'], loc='upper right')
+    # # Figure 2: Confusion matrix
+    # plt.figure(figsize=(10, 8))
+    # cm = confusion_matrix(y_test, y_pred_classes)
+    # sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+    #             xticklabels=class_names, yticklabels=class_names)
+    # plt.title(f'Confusion Matrix - {dataset_name}')
+    # plt.ylabel('True Label')
+    # plt.xlabel('Predicted Label')
+    # plt.tight_layout()
+    # plt.savefig(f'{evaluation_dir}/multiclass_confusion_matrix_{dataset_name}.png', dpi=300, bbox_inches='tight')
+    # plt.close()
     
-    plt.tight_layout()
-    plt.savefig(f'{evaluation_dir}/multiclass_training_metrics_{dataset_name}.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    # Figure 2: Confusion matrix
-    plt.figure(figsize=(10, 8))
-    cm = confusion_matrix(y_test, y_pred_classes)
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
-                xticklabels=class_names, yticklabels=class_names)
-    plt.title(f'Confusion Matrix - {dataset_name}')
-    plt.ylabel('True Label')
-    plt.xlabel('Predicted Label')
-    plt.tight_layout()
-    plt.savefig(f'{evaluation_dir}/multiclass_confusion_matrix_{dataset_name}.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    # Figure 3: Class distribution
-    plt.figure(figsize=(10, 6))
-    unique, counts = np.unique(y_test, return_counts=True)
-    plt.bar([class_names[i] for i in unique], counts)
-    plt.title(f'Test Set Class Distribution - {dataset_name}')
-    plt.xlabel('Traffic Type')
-    plt.ylabel('Count')
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    plt.savefig(f'{evaluation_dir}/multiclass_class_distribution_{dataset_name}.png', dpi=300, bbox_inches='tight')
-    plt.close()
+    # # Figure 3: Class distribution
+    # plt.figure(figsize=(10, 6))
+    # unique, counts = np.unique(y_test, return_counts=True)
+    # plt.bar([class_names[i] for i in unique], counts)
+    # plt.title(f'Test Set Class Distribution - {dataset_name}')
+    # plt.xlabel('Traffic Type')
+    # plt.ylabel('Count')
+    # plt.xticks(rotation=45)
+    # plt.tight_layout()
+    # plt.savefig(f'{evaluation_dir}/multiclass_class_distribution_{dataset_name}.png', dpi=300, bbox_inches='tight')
+    # plt.close()
     
     return model, history
 
 # Function for setting up feature columns and preprocessor
-def setup_preprocessor():
-    # 1. Features to remove (constant columns)
+def setup_preprocessor():    
+    # Constant columns (same)
     constant_cols = ['Bwd URG Flags', 'Bwd PSH Flags', 'Fwd Bytes/Bulk Avg', 
                     'Fwd Packet/Bulk Avg', 'Fwd Bulk Rate Avg']
 
-    # 2. Binary features : 'Fwd URG Flags', 'Fwd PSH Flags' (keep as is)
-
-    # 3. Categorical features for one-hot encoding
-    categorical_cols = ['Protocol', 'Down/Up Ratio', 
-                    'RST Flag Count', 'FIN Flag Count']
-
-    # 4. Flag features with low-medium cardinality for ordinal encoding
-    flag_cols_ordinal = ['SYN Flag Count', 'CWR Flag Count', 'ECE Flag Count']
-
-    # 5. Features that now need scaling due to higher cardinality
-    medium_cardinality_cols = [
-        'Subflow Fwd Packets', 'Subflow Bwd Packets', 
-        'Bwd Init Win Bytes', 'FWD Init Win Bytes',
-        'Subflow Bwd Bytes', 'Subflow Fwd Bytes',
-        'Bwd Bulk Rate Avg', 'ACK Flag Count'
+    # Group features by characteristics for multiclass
+    
+    # 1. Flow timing features (often crucial for traffic type)
+    timing_features = [
+        'Flow Duration', 'Flow Packets/s', 'Flow Bytes/s',
+        'Fwd IAT Std', 'Bwd IAT Max', 'Idle Std'
     ]
-
-    # 6. Port columns for special encoding
+    
+    # 2. Packet size features (important for multiclass)
+    size_features = [
+        'Packet Length Std', 'Fwd Packet Length Std', 'Average Packet Size',
+        'Bwd Packet Length Min', 'Bwd Packet Length Max', 'Fwd Seg Size Min'
+    ]
+    
+    # 3. Protocol behavior features
+    protocol_features = [
+        'Subflow Fwd Packets', 'Subflow Bwd Packets', 
+        'Subflow Fwd Bytes', 'Subflow Bwd Bytes',
+        'Bwd Packets/s', 'Active Std', 'Active Max'
+    ]
+    
+    # 4. Window and connection features
+    connection_features = [
+        'Bwd Init Win Bytes', 'FWD Init Win Bytes',
+        'Bwd Bulk Rate Avg'
+    ]
+    
+    # 5. Flag features - use ordinal encoding but group better
+    flag_features = ['SYN Flag Count', 'CWR Flag Count', 'ECE Flag Count', 'ACK Flag Count']
+    categorical_features = ['Protocol', 'RST Flag Count', 'FIN Flag Count']
+    
+    # 6. Ratio features (often important for traffic classification)
+    ratio_features = ['Down/Up Ratio']
+    
+    # Port columns
     port_cols = ['Src Port', 'Dst Port']
 
-    # 7. High-cardinality numerical features
-    high_card_num_cols = [
-        'Flow Packets/s', 'Bwd Packets/s', 'Flow Duration', 
-        'Flow Bytes/s', 'Fwd IAT Std', 'Idle Std'
-    ]
-
-    # 8. Medium-cardinality numerical features
-    med_card_num_cols = [
-        'Packet Length Std', 'Fwd Packet Length Std', 'Average Packet Size', 
-        'Active Std', 'Active Max'
-    ]
-
-    # 9. Lower-cardinality numerical features
-    low_card_num_cols = [
-        'Bwd IAT Max', 'Bwd Packet Length Min', 
-        'Bwd Packet Length Max', 'Fwd Seg Size Min'
-    ]
-
-    # Create the preprocessor
+    # Create multiclass-optimized preprocessor
     preprocessor = ColumnTransformer(
         transformers=[
-            # High-cardinality numerical features
-            ('high_card_num', Pipeline([
+            # Timing features - use StandardScaler for better multiclass separation
+            ('timing', Pipeline([
                 ('power', PowerTransformer(method='yeo-johnson')),
-                ('scaler', RobustScaler())
-            ]), high_card_num_cols),
+                ('scaler', StandardScaler())  # Changed from RobustScaler
+            ]), timing_features),
             
-            # Medium-cardinality numerical features
-            ('med_card_num', RobustScaler(), med_card_num_cols),
+            # Size features - normalize for better class boundaries
+            ('size', Pipeline([
+                ('scaler', StandardScaler())
+            ]), size_features),
             
-            # Lower-cardinality numerical features
-            ('low_card_num', RobustScaler(), low_card_num_cols),
+            # Protocol features - robust scaling
+            ('protocol', RobustScaler(), protocol_features),
             
-            # Features with higher cardinality in stratified sample
-            ('medium_cardinality', RobustScaler(), medium_cardinality_cols),
+            # Connection features
+            ('connection', StandardScaler(), connection_features),
             
-            # Flag features with low cardinality
-            ('flag_ordinal', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1), 
-            flag_cols_ordinal),
+            # Flag features - ordinal encoding
+            ('flags', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1), 
+             flag_features),
             
-            # Port columns
-            ('port', FunctionTransformer(encode_port_categories), port_cols),
+            # Categorical features - one-hot
+            ('categorical', OneHotEncoder(sparse_output=False, handle_unknown='ignore'), 
+             categorical_features),
             
-            # Categorical features
-            ('cat', OneHotEncoder(sparse_output=False, handle_unknown='ignore'), 
-            categorical_cols)
+            # Ratio features - special handling
+            ('ratio', Pipeline([
+                ('clip', FunctionTransformer(lambda x: np.clip(x, 0, 10))),  # Clip extreme ratios
+                ('scaler', StandardScaler())
+            ]), ratio_features),
+            
+            # Port columns - simplified encoding
+            ('ports', FunctionTransformer(encode_port_categories_multiclass), port_cols)
         ],
         remainder='passthrough'
     )
     
     return preprocessor, constant_cols
 
-def encode_port_categories(X):
-    # Convert to DataFrame if not already
+def encode_port_categories_multiclass(X):
+    """Simplified port encoding for multiclass"""
     if not isinstance(X, pd.DataFrame):
         X = pd.DataFrame(X, columns=['Src Port', 'Dst Port'])
     
-    # Create new columns
     result = X.copy()
     for col in ['Src Port', 'Dst Port']:
-        # Well-known ports (0-1023)
-        result[f'{col}_well_known'] = (result[col] <= 1023).astype(int)
+        # Simpler categorization
+        result[f'{col}_category'] = pd.cut(
+            result[col], 
+            bins=[0, 1023, 49151, 65535], 
+            labels=[0, 1, 2],  # well-known, registered, dynamic
+            include_lowest=True
+        ).astype(int)
         
-        # Registered ports (1024-49151)
-        result[f'{col}_registered'] = ((result[col] > 1023) & (result[col] <= 49151)).astype(int)
-        
-        # Dynamic/private ports (49152-65535)
-        result[f'{col}_dynamic'] = (result[col] > 49151).astype(int)
-        
-        # Common service ports (add more as needed)
-        result[f'{col}_web'] = result[col].isin([80, 443, 8080, 8443]).astype(int)
-        result[f'{col}_email'] = result[col].isin([25, 465, 587, 110, 143, 993, 995]).astype(int)
-        result[f'{col}_file_transfer'] = result[col].isin([20, 21, 22, 69]).astype(int)
-        result[f'{col}_dns'] = result[col].isin([53]).astype(int)
-        
-    # Drop original port columns
+        # Only most important service flags
+        result[f'{col}_is_web'] = result[col].isin([80, 443, 8080]).astype(int)
+        result[f'{col}_is_secure'] = result[col].isin([443, 22, 993, 995]).astype(int)
+    
     return result.drop(['Src Port', 'Dst Port'], axis=1)
 
 # Apply multiclass resampling to balance classes
@@ -376,20 +364,18 @@ def apply_multiclass_resampling(X, y, class_names):
         percentage = count / len(y) * 100 if len(y) > 0 else 0
         print(f"  {class_name}: {count} samples ({percentage:.2f}%)")
     
-    # Calculate target sample size (use median or mean of class sizes)
+    # Calculate target sample size - use a more reasonable target
     class_counts = list(counter_before.values())
-    target_size = int(np.median(class_counts))
+    # Use mean of non-extreme classes or set a fixed reasonable target
+    target_size = max(50, int(np.mean([c for c in class_counts if c > 20 and c < 1000])))
     
     print(f"\nTarget size per class: {target_size}")
     
-    # Step 1: Undersample majority classes that are significantly larger
-    max_size_before_smote = target_size * 3  # Allow classes to be up to 3x target before undersampling
-    
-    # Create sampling strategy for undersampling
+    # Step 1: Undersample ALL classes to target size first
     undersample_strategy = {}
     for class_id, count in counter_before.items():
-        if count > max_size_before_smote:
-            undersample_strategy[class_id] = max_size_before_smote
+        if count > target_size:
+            undersample_strategy[class_id] = target_size
     
     if undersample_strategy:
         print(f"\nStep 1: Undersampling classes with strategy: {undersample_strategy}")
@@ -408,14 +394,14 @@ def apply_multiclass_resampling(X, y, class_names):
         X_under, y_under = X, y
         counter_under = counter_before
     
-    # Step 2: Apply SMOTE to balance all classes to target size
-    print(f"\nStep 2: Applying SMOTE to balance classes to {target_size} samples each...")
+    # Step 2: Apply SMOTE to bring ALL classes to exactly target_size
+    print(f"\nStep 2: Applying SMOTE to balance all classes to exactly {target_size} samples each...")
     
-    # Create sampling strategy for SMOTE (bring all classes to target size)
+    # Create sampling strategy for SMOTE (bring ALL classes to target size)
     smote_strategy = {}
     for class_id in np.unique(y_under):
         current_count = counter_under.get(class_id, 0)
-        if current_count < target_size:
+        if current_count != target_size:  # Changed condition to ensure exact balance
             smote_strategy[class_id] = target_size
     
     if smote_strategy:
@@ -439,7 +425,7 @@ def apply_multiclass_resampling(X, y, class_names):
                 print("Using original data without SMOTE...")
                 X_resampled, y_resampled = X_under, y_under
     else:
-        print("No SMOTE needed - all classes already at or above target size.")
+        print("All classes already at target size.")
         X_resampled, y_resampled = X_under, y_under
     
     # Check final distribution
@@ -474,13 +460,6 @@ def process_stratified_sample_for_multiclass_classification():
     from sklearn.preprocessing import LabelEncoder
     label_encoder = LabelEncoder()
     y_stratified_encoded = label_encoder.fit_transform(y_stratified)
-    
-    # Display class distribution
-    print("\nClass distribution in stratified dataset:")
-    for i, class_name in enumerate(class_names):
-        count = sum(y_stratified_encoded == i)
-        percentage = count / len(y_stratified_encoded) * 100
-        print(f"  Class '{class_name}': {count} samples ({percentage:.2f}%)")
 
     # Split the dataset into training and test sets
     X_train_stratified, X_test_stratified, y_train_stratified, y_test_stratified = train_test_split(
@@ -627,7 +606,7 @@ def nn_multiclass_classification():
     preprocessor, constant_cols, label_encoder, class_names = process_stratified_sample_for_multiclass_classification()
     
     # Process Clustering samples using the fitted preprocessor
-    process_clustering_samples_for_multiclass_classification(preprocessor, constant_cols, label_encoder, class_names)
+    #process_clustering_samples_for_multiclass_classification(preprocessor, constant_cols, label_encoder, class_names)
         
     return
 
