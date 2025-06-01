@@ -1,4 +1,3 @@
-import polars as pl
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import PowerTransformer, RobustScaler, OneHotEncoder, OrdinalEncoder
@@ -6,42 +5,36 @@ from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report
-import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
-from sklearn.metrics import classification_report, confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 import csv
-
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.over_sampling import SMOTE, BorderlineSMOTE
-from imblearn.combine import SMOTETomek, SMOTEENN
 from collections import Counter
 
 from sklearn.model_selection import StratifiedKFold
 
 # This function builds a binary classification neural network
-def build_neural_network(input_shape):
+def build_binary_neural_network(input_shape, act, loss):
     model = keras.Sequential([
         # Input layer
         layers.Input(shape=(input_shape,)),
         
         # First hidden layer
-        layers.Dense(128, activation='relu'),
+        layers.Dense(128, activation=act),
         layers.BatchNormalization(),
         layers.Dropout(0.3),
         
         # Second hidden layer
-        layers.Dense(64, activation='relu'),
+        layers.Dense(64, act),
         layers.BatchNormalization(),
         layers.Dropout(0.2),
         
         # Third hidden layer
-        layers.Dense(32, activation='relu'),
+        layers.Dense(32, act),
         layers.BatchNormalization(),
         layers.Dropout(0.1),
         
@@ -52,7 +45,7 @@ def build_neural_network(input_shape):
     # Compile the model
     model.compile(
         optimizer=keras.optimizers.Adam(learning_rate=0.001),
-        loss='binary_crossentropy',
+        loss=loss,
         metrics=[
             'accuracy',
             keras.metrics.Precision(name='precision'),
@@ -64,156 +57,168 @@ def build_neural_network(input_shape):
     return model
 
 # Function to train and evaluate neural network on a dataset
-def train_neural_network(X_train, y_train, X_test, y_test, dataset_name, epochs=50):
+def train_binary_neural_network(X_train, y_train, X_test, y_test, dataset_name, epochs=50):
     print(f"\n===== STRATIFIED 5-FOLD CROSS-VALIDATION ON {dataset_name.upper()} =====")
     
     # Initialize Stratified K-Fold
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
     
-    # Store metrics for each fold
-    fold_metrics = []
-    fold_histories = []
-    fold_val_gaps = []
-    fold_generalization_metrics = []
+    
+
+    activation= ['swish', 'tanh', 'elu', 'prelu', layers.LeakyReLU(alpha=0.1)]
+    loss= ['binary_crossentropy', 'mse']
+    batch_size = [16, 32]
+    epochs = [50, 100, 150, 200]
 
     # Perform k-fold cross validation
-    for fold, (train_idx, val_idx) in enumerate(skf.split(X_train, y_train)):
-        print(f"\n----- Fold {fold+1}/5 -----")
-        
-        # Split data for this fold
-        X_train_fold = X_train
-        y_train_fold = y_train
-        X_val_fold = X_test
-        y_val_fold = y_test
+    for act in activation:
+        for l in loss:
+            for bs in batch_size:
+                for epoch in epochs:
+                    print(f"\n----- Training with Activation: {act}, Loss: {l}, Batch Size: {bs}, Epochs: {epoch} -----")
+                    
+                    # Store metrics for each fold
+                    fold_metrics = []
+                    fold_histories = []
+                    fold_val_gaps = []
+                    fold_generalization_metrics = []
+                    
+                    for fold, (train_idx, val_idx) in enumerate(skf.split(X_train, y_train)):
+                        print(f"\n----- Fold {fold+1}/5 -----")
+                        
+                        # Split data for this fold
+                        X_train_fold, X_val_fold = X_train[train_idx], X_train[val_idx]
+                        y_train_fold, y_val_fold = y_train[train_idx], y_train[val_idx]
 
-        # Get input shape from training data
-        input_shape = X_train_fold.shape[1]
-        
-        # Build the neural network
-        model = build_neural_network(input_shape)
-        
-        # Set up early stopping
-        early_stopping = keras.callbacks.EarlyStopping(
-            monitor='val_loss',
-            patience=10,
-            restore_best_weights=True
-        )
-        
-        # Set up learning rate reduction
-        lr_reduction = keras.callbacks.ReduceLROnPlateau(
-            monitor='val_loss',
-            factor=0.2,
-            patience=5,
-            min_lr=0.00001
-        )
-        
-        # ADD CLASS WEIGHTS FOR ADDITIONAL BALANCING
-        # Calculate class weights based on the training data
-        # neg, pos = np.bincount(y_train.astype(int))
-        # total = neg + pos
-        # weight_for_0 = (1 / neg) * (total / 2.0)
-        # weight_for_1 = (1 / pos) * (total / 2.0)
-        # class_weight = {0: weight_for_0, 1: weight_for_1}
-        
-        # print(f"\nClass weights: {class_weight}")
+                        # Get input shape from training data
+                        input_shape = X_train_fold.shape[1]
+                        
+                        # Build the neural network
+                        model = build_binary_neural_network(input_shape, act, l)
+                        
+                        # Set up early stopping
+                        early_stopping = keras.callbacks.EarlyStopping(
+                            monitor='val_f1_score',  # Monitor F1 score instead of loss
+                            patience=15,  # Increased patience
+                            restore_best_weights=True,
+                            mode='max'  # Maximize F1 score
+                        )
+                        
+                        # Set up learning rate reduction
+                        lr_reduction = keras.callbacks.ReduceLROnPlateau(
+                            monitor='val_loss',
+                            factor=0.2,
+                            patience=5,
+                            min_lr=0.00001
+                        )
+                        
+                        # ADD CLASS WEIGHTS FOR ADDITIONAL BALANCING
+                        # Calculate class weights based on the training data
+                        neg, pos = np.bincount(y_train.astype(int))
+                        total = neg + pos
+                        weight_for_0 = (1 / neg) * (total / 2.0)
+                        weight_for_1 = (1 / pos) * (total / 2.0)
+                        class_weight = {0: weight_for_0, 1: weight_for_1}
+                        
+                        # print(f"\nClass weights: {class_weight}")
 
-        # Train the model
-        history = model.fit(
-            X_train_fold, y_train_fold,
-            epochs=epochs,
-            batch_size=32,
-            validation_data=(X_val_fold, y_val_fold),
-            callbacks=[early_stopping, lr_reduction],
-            # class_weight=class_weight, # ADD CLASS WEIGHTING
-            verbose=1
-        )
-    
-        # Evaluate the model
-        model_evaluation = model.evaluate(X_val_fold, y_val_fold, verbose=0)
+                        # Train the model
+                        history = model.fit(
+                            X_train_fold, y_train_fold,
+                            epochs=epoch,
+                            batch_size=bs,
+                            validation_data=(X_val_fold, y_val_fold),
+                            callbacks=[early_stopping, lr_reduction],
+                            # class_weight=class_weight, # ADD CLASS WEIGHTING
+                            verbose=1
+                        )
+                    
+                        # Evaluate the model
+                        model_evaluation = model.evaluate(X_val_fold, y_val_fold, verbose=0)
 
-        # Calculate generalization metrics
-        final_train_acc = history.history['accuracy'][-1]
-        final_val_acc = history.history['val_accuracy'][-1]
-        val_gap = final_train_acc - final_val_acc
-    
-        # Store results
-        fold_metrics.append(model_evaluation)
-        fold_histories.append(history.history)
-        fold_val_gaps.append(val_gap)
+                        # Calculate generalization metrics
+                        final_train_acc = history.history['accuracy'][-1]
+                        final_val_acc = history.history['val_accuracy'][-1]
+                        val_gap = final_train_acc - final_val_acc
+                    
+                        # Store results
+                        fold_metrics.append(model_evaluation)
+                        fold_histories.append(history.history)
+                        fold_val_gaps.append(val_gap)
 
-        # Compile generalization metrics for this fold
-        fold_gen = {
-            'train_acc': final_train_acc,
-            'val_acc': final_val_acc,
-            'val_gap': val_gap,
-            'loss': model_evaluation[0],
-            'accuracy': model_evaluation[1],
-            'precision': model_evaluation[2],
-            'recall': model_evaluation[3],
-            'auc': model_evaluation[4]
-        }
-        fold_generalization_metrics.append(fold_gen)
-    
-    # Calculate average metrics across all folds
-    fold_metrics = np.array(fold_metrics)
-    avg_metrics = np.mean(fold_metrics, axis=0)
-    std_metrics = np.std(fold_metrics, axis=0)
-    
-    # Calculate average generalization gap
-    avg_val_gap = np.mean(fold_val_gaps)
-    std_val_gap = np.std(fold_val_gaps)
-    
-    # Print evaluation metrics
-    print("\n===== CROSS-VALIDATION SUMMARY =====")
-    print(f"Average Loss: {avg_metrics[0]:.4f} ± {std_metrics[0]:.4f}")
-    print(f"Average Accuracy: {avg_metrics[1]:.4f} ± {std_metrics[1]:.4f}")
-    print(f"Average Precision: {avg_metrics[2]:.4f} ± {std_metrics[2]:.4f}")
-    print(f"Average Recall: {avg_metrics[3]:.4f} ± {std_metrics[3]:.4f}")
-    print(f"Average AUC: {avg_metrics[4]:.4f} ± {std_metrics[4]:.4f}")
-    print(f"Average Generalization Gap: {avg_val_gap:.4f} ± {std_val_gap:.4f}")
-    
-    # Create directory for saving results if it doesn't exist
-    evaluation_dir = "classification_nn_evaluation_and_plots"
-    if not os.path.exists(evaluation_dir):
-        os.makedirs(evaluation_dir)
-    
-    # Save evaluation metrics to CSV
-    csv_path = f"{evaluation_dir}/balanced_{dataset_name}_evaluation_with_stratified_5cv.csv"
-    # Save average results
-    with open(f"{csv_path}", 'w', newline='') as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerow(['Metric', 'Average', 'Std Dev'])
-        writer.writerow(['Loss', avg_metrics[0], std_metrics[0]])
-        writer.writerow(['Accuracy', avg_metrics[1], std_metrics[1]])
-        writer.writerow(['Precision', avg_metrics[2], std_metrics[2]])
-        writer.writerow(['Recall', avg_metrics[3], std_metrics[3]])
-        writer.writerow(['AUC', avg_metrics[4], std_metrics[4]])
-        writer.writerow(['Generalization Gap', avg_val_gap, std_val_gap])
-    
-    print(f"Evaluation metrics saved to {csv_path}")
+                        # Compile generalization metrics for this fold
+                        fold_gen = {
+                            'train_acc': final_train_acc,
+                            'val_acc': final_val_acc,
+                            'val_gap': val_gap,
+                            'loss': model_evaluation[0],
+                            'accuracy': model_evaluation[1],
+                            'precision': model_evaluation[2],
+                            'recall': model_evaluation[3],
+                            'auc': model_evaluation[4]
+                        }
+                        fold_generalization_metrics.append(fold_gen)
+                    
+                    # Calculate average metrics across all folds
+                    fold_metrics = np.array(fold_metrics)
+                    avg_metrics = np.mean(fold_metrics, axis=0)
+                    std_metrics = np.std(fold_metrics, axis=0)
+                    
+                    # Calculate average generalization gap
+                    avg_val_gap = np.mean(fold_val_gaps)
+                    std_val_gap = np.std(fold_val_gaps)
+                    
+                    # Print evaluation metrics
+                    print("\n===== CROSS-VALIDATION SUMMARY =====")
+                    print(f"Average Loss: {avg_metrics[0]:.4f} ± {std_metrics[0]:.4f}")
+                    print(f"Average Accuracy: {avg_metrics[1]:.4f} ± {std_metrics[1]:.4f}")
+                    print(f"Average Precision: {avg_metrics[2]:.4f} ± {std_metrics[2]:.4f}")
+                    print(f"Average Recall: {avg_metrics[3]:.4f} ± {std_metrics[3]:.4f}")
+                    print(f"Average AUC: {avg_metrics[4]:.4f} ± {std_metrics[4]:.4f}")
+                    print(f"Average Generalization Gap: {avg_val_gap:.4f} ± {std_val_gap:.4f}")
+                    
+                    # Create directory for saving results if it doesn't exist
+                    evaluation_dir = "binary_nn_training"
+                    if not os.path.exists(evaluation_dir):
+                        os.makedirs(evaluation_dir)
+                    
+                    # Save evaluation metrics to CSV
+                    csv_path = f"{evaluation_dir}/model-{act}-{l}-{bs}-{epoch}.csv"
+                    # Save average results
+                    with open(f"{csv_path}", 'w', newline='') as csvfile:
+                        writer = csv.writer(csvfile)
+                        writer.writerow(['Metric', 'Average', 'Std Dev'])
+                        writer.writerow(['Loss', avg_metrics[0], std_metrics[0]])
+                        writer.writerow(['Accuracy', avg_metrics[1], std_metrics[1]])
+                        writer.writerow(['Precision', avg_metrics[2], std_metrics[2]])
+                        writer.writerow(['Recall', avg_metrics[3], std_metrics[3]])
+                        writer.writerow(['AUC', avg_metrics[4], std_metrics[4]])
+                        writer.writerow(['Generalization Gap', avg_val_gap, std_val_gap])
+                    
+                    print(f"Evaluation metrics saved to {csv_path}")
     
     # Plot training history
-    plt.figure(figsize=(12, 5))
+    # plt.figure(figsize=(12, 5))
     
-    # Plot training & validation accuracy
-    plt.subplot(1, 2, 1)
-    plt.plot(history.history['accuracy'])
-    plt.plot(history.history['val_accuracy'])
-    plt.title(f'Model Accuracy - {dataset_name}')
-    plt.ylabel('Accuracy')
-    plt.xlabel('Epoch')
-    plt.legend(['Train', 'Validation'], loc='lower right')
+    # # Plot training & validation accuracy
+    # plt.subplot(1, 2, 1)
+    # plt.plot(history.history['accuracy'])
+    # plt.plot(history.history['val_accuracy'])
+    # plt.title(f'Model Accuracy - {dataset_name}')
+    # plt.ylabel('Accuracy')
+    # plt.xlabel('Epoch')
+    # plt.legend(['Train', 'Validation'], loc='lower right')
     
-    # Plot training & validation loss
-    plt.subplot(1, 2, 2)
-    plt.plot(history.history['loss'])
-    plt.plot(history.history['val_loss'])
-    plt.title(f'Model Loss - {dataset_name}')
-    plt.ylabel('Loss')
-    plt.xlabel('Epoch')
-    plt.legend(['Train', 'Validation'], loc='upper right')
-    plt.tight_layout()
-    plt.savefig(f'classification_nn_evaluation_and_plots/training_history_{dataset_name}.png')
+    # # Plot training & validation loss
+    # plt.subplot(1, 2, 2)
+    # plt.plot(history.history['loss'])
+    # plt.plot(history.history['val_loss'])
+    # plt.title(f'Model Loss - {dataset_name}')
+    # plt.ylabel('Loss')
+    # plt.xlabel('Epoch')
+    # plt.legend(['Train', 'Validation'], loc='upper right')
+    # plt.tight_layout()
+    # plt.savefig(f'classification_nn_evaluation_and_plots/training_history_{dataset_name}.png')
     
     return model, history
 
@@ -226,7 +231,7 @@ def setup_preprocessor():
     # 2. Binary features : 'Fwd URG Flags', 'Fwd PSH Flags' (keep as is)
 
     # 3. Categorical features for one-hot encoding
-    categorical_cols = ['Protocol', 'Traffic Type', 'Down/Up Ratio', 
+    categorical_cols = ['Protocol', 'Down/Up Ratio', 
                     'RST Flag Count', 'FIN Flag Count']
 
     # 4. Flag features with low-medium cardinality for ordinal encoding
@@ -322,7 +327,7 @@ def encode_port_categories(X):
     return result.drop(['Src Port', 'Dst Port'], axis=1)
 
 # Apply hybrid resampling (oversampling + undersampling) to balance classes
-def apply_hybrid_resampling(X, y):
+def apply_binary_resampling(X, y):
     """
     Apply a hybrid approach of undersampling and oversampling to balance classes.
     
@@ -370,13 +375,14 @@ def apply_hybrid_resampling(X, y):
 
     # Check final distribution
     counter_after = Counter(y_resampled)
-    print(f"   Benign: {counter_after[0]} samples ({counter_after[0]/len(y_resampled)*100:.2f}%)")
+    print(f"\nFinal class distribution after resampling:")
+    print(f"\n   Benign: {counter_after[0]} samples ({counter_after[0]/len(y_resampled)*100:.2f}%)")
     print(f"   Malicious: {counter_after[1]} samples ({counter_after[1]/len(y_resampled)*100:.2f}%)")
     
     
     return X_resampled, y_resampled
 
-def process_stratified_sample():
+def process_stratified_sample_for_binay_classification():
     # Setup preprocessor
     preprocessor, constant_cols = setup_preprocessor()
     
@@ -387,20 +393,14 @@ def process_stratified_sample():
     df = df.drop(columns=constant_cols, errors='ignore')
     
     # Split data
-    X_stratified = df.drop('Label', axis=1)
+    X_stratified = df.drop(['Label', 'Traffic Type'], axis=1)
     y_stratified = df['Label']
     
     # Convert string labels to numeric (crucial step)
     # If your labels are 'Malicious' and 'Benign', map them to 1 and 0
     if y_stratified.dtype == 'object':  # Check if labels are strings/objects
-        print("\nConverting string labels to numeric values...")
         label_map = {'Malicious': 1, 'Benign': 0}  # Adjust these values based on your actual labels
         y_stratified = y_stratified.map(label_map)
-
-    # Display class distribution
-    print("\nClass distribution in stratified dataset:")
-    print(f"  Class 'Benign': {sum(y_stratified == 0)} samples ({sum(y_stratified == 0)/len(y_stratified)*100:.2f}%)")
-    print(f"  Class 'Malicious': {sum(y_stratified == 1)} samples ({sum(y_stratified == 1)/len(y_stratified)*100:.2f}%)")
 
     # split (one time) the dataset into training and test sets
     X_train_stratified, X_test_stratified, y_train_stratified, y_test_stratified = train_test_split(
@@ -412,7 +412,7 @@ def process_stratified_sample():
     # APPLY HYBRID RESAMPLING TO THE TRAINING DATA ONLY
     # COMMENTED OUT WHEN WHEN USING THE PREPROCESSED UNBALANCED DATASET
     print("\nApplying hybrid resampling to balance training data...")
-    X_train_resampled, y_train_resampled = apply_hybrid_resampling(X_train_processed, y_train_stratified)
+    X_train_resampled, y_train_resampled = apply_binary_resampling(X_train_processed, y_train_stratified)
     
     X_test_processed = preprocessor.transform(X_test_stratified)
 
@@ -446,7 +446,7 @@ def process_stratified_sample():
     print(f"X_train: {processed_data['X_train'].shape}, dtype: {processed_data['X_train'].dtype}")
     print(f"y_train: {processed_data['y_train'].shape}, dtype: {processed_data['y_train'].dtype}")
 
-    train_neural_network(
+    train_binary_neural_network(
         processed_data['X_train'], 
         processed_data['y_train'],
         processed_data['X_test'],
@@ -458,7 +458,7 @@ def process_stratified_sample():
 
 
 # Process other Clustering samples using the fitted preprocessor 
-def process_clustering_samples(preprocessor, constant_cols):
+def process_clustering_samples_for_binary_classification(preprocessor, constant_cols):
     other_datasets = {
         'kmeans': pd.read_csv('sampled_data/sampled_data_kmeans_sample_data.csv'),
         'hdbscan': pd.read_csv('sampled_data/hdbscan_sampled_data.csv')
@@ -494,7 +494,7 @@ def process_clustering_samples(preprocessor, constant_cols):
         X_train_processed = preprocessor.transform(X_train)
 
         # APPLY HYBRID RESAMPLING TO THE TRAINING DATA ONLY
-        X_train_resampled, y_train_resampled = apply_hybrid_resampling(
+        X_train_resampled, y_train_resampled = apply_binary_resampling(
             X_train_processed, y_train,
         )
 
@@ -533,7 +533,7 @@ def process_clustering_samples(preprocessor, constant_cols):
         print(f"y_train: {processed_data['y_train'].shape}, dtype: {processed_data['y_train'].dtype}")
         
         try:
-            train_neural_network(
+            train_binary_neural_network(
                 processed_data['X_train'], 
                 processed_data['y_train'],
                 processed_data['X_test'],
@@ -551,18 +551,18 @@ def nn_binary_classification():
     '''' proccess_stratified_sample return the fit preprocessor and process_clustering_samples uses it'''
 
     # Process stratified sample first and get fitted preprocessor
-    preprocessor, constant_cols = process_stratified_sample()
+    preprocessor, constant_cols = process_stratified_sample_for_binay_classification()
     
     # Process Clustering samples using the fitted preprocessor
-    process_clustering_samples(preprocessor, constant_cols)
+    process_clustering_samples_for_binary_classification(preprocessor, constant_cols)
         
     return 
+
 
 def main():
     # Count unique values of columns
     #count_unique_values()
     nn_binary_classification()
-
 
 if __name__ == "__main__":
     main()
