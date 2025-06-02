@@ -614,7 +614,7 @@ def diagnose_scores(df, X, y_binary, svm_model=None):
     print("\n===== DIAGNOSIS COMPLETE =====\n")
 
 
-if __name__ == "__main__":
+def svm():
     # Define data sample paths
     data_samples = {
         'stratified_sampling': "sampled_data/stratified_sampled_data",
@@ -634,3 +634,5 @@ if __name__ == "__main__":
     save_and_visualize_results(binary_results, multiclass_results)
 
     print("\nEvaluation completed.")
+
+    return
