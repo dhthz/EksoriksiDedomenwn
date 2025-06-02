@@ -151,7 +151,7 @@ def train_multiclass_neural_network(X_train, y_train, X_test, y_test, dataset_na
     if not os.path.exists(evaluation_dir):
         os.makedirs(evaluation_dir)
     
-    csv_path = f"{evaluation_dir}/multiclass_{dataset_name}_evaluation-without-resampling-100-epochs-only-scaling.csv"
+    csv_path = f"{evaluation_dir}/multiclass_{dataset_name}_evaluation.csv"
     with open(csv_path, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(['Metric', 'Average', 'Std Dev'])
