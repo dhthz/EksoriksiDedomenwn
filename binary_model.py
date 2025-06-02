@@ -24,15 +24,12 @@ def build_binary_neural_network(input_shape):
         layers.Input(shape=(input_shape,)),
         
         layers.Dense(128, activation='relu'),
-        layers.BatchNormalization(),
         layers.Dropout(0.3),
         
         layers.Dense(64, activation='relu'),
-        layers.BatchNormalization(),
         layers.Dropout(0.2),
         
         layers.Dense(32, activation='relu'),
-        layers.BatchNormalization(),
         layers.Dropout(0.1),
         
         layers.Dense(1, activation='sigmoid')
@@ -290,10 +287,11 @@ def process_stratified_sample_for_binay_classification():
         label_map = {'Malicious': 1, 'Benign': 0}  
         y_stratified = y_stratified.map(label_map)
 
-    # split (one time) the dataset into training(80%) and test sets(20%)
-    X_train_stratified, X_test_stratified, y_train_stratified, y_test_stratified = train_test_split(
-        X_stratified, y_stratified, test_size=0.1, random_state=42
-    )
+    # Splitting 90% for training and 10% for testing
+    X_train_stratified = X_stratified.sample(frac=0.9, random_state=42)
+    X_test_stratified = X_stratified.drop(X_train_stratified.index)
+    y_train_stratified = y_stratified.loc[X_train_stratified.index]
+    y_test_stratified = y_stratified.loc[X_test_stratified.index]
 
     # Preprocess the data
     X_train_processed = preprocessor.fit_transform(X_train_stratified)
@@ -362,8 +360,11 @@ def process_clustering_samples_for_binary_classification(preprocessor, constant_
         print(f"  Class 'Benign': {sum(y == 0)} samples ({sum(y == 0)/len(y)*100:.2f}%)")
         print(f"  Class 'Malicious': {sum(y == 1)} samples ({sum(y == 1)/len(y)*100:.2f}%)")
 
-        # Split data
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
+        # Split data manually
+        X_train = X.sample(frac=0.9, random_state=42)
+        X_test = X.drop(X_train.index)
+        y_train = y.loc[X_train.index]
+        y_test = y.loc[X_test.index]
 
         # Use the ALREADY FITTED preprocessor
         X_train_processed = preprocessor.transform(X_train)
