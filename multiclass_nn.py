@@ -147,7 +147,7 @@ def train_multiclass_neural_network(X_train, y_train, X_test, y_test, dataset_na
     print(f"Precision: {precision:.4f}")
     print(f"Recall: {recall:.4f}")
     
-    evaluation_dir = "multiclass_model"
+    evaluation_dir = "multiclass_model-2"
     if not os.path.exists(evaluation_dir):
         os.makedirs(evaluation_dir)
     
@@ -338,10 +338,11 @@ def process_stratified_sample_for_multiclass_classification():
     label_encoder = LabelEncoder()
     y_stratified_encoded = label_encoder.fit_transform(y_stratified)
 
-    # Split the dataset into training and test sets
-    X_train_stratified, X_test_stratified, y_train_stratified, y_test_stratified = train_test_split(
-        X_stratified, y_stratified_encoded, test_size=0.2, random_state=42, stratify=y_stratified_encoded
-    )
+    # Use all data for training (no test split)
+    X_train_stratified = X_stratified
+    y_train_stratified = y_stratified_encoded
+    X_test_stratified = X_stratified  # Use same data for testing
+    y_test_stratified = y_stratified_encoded  # Use same data for testing
 
     # Fit preprocessor on training data
     X_train_processed = preprocessor.fit_transform(X_train_stratified)
@@ -417,10 +418,11 @@ def process_clustering_samples_for_multiclass_classification(preprocessor, const
             percentage = count / len(y_encoded) * 100 if len(y_encoded) > 0 else 0
             print(f"  Class '{class_name}': {count} samples ({percentage:.2f}%)")
 
-        # Split data
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded
-        )
+        # Use all data (no train/test split)
+        X_train = X
+        y_train = y_encoded
+        X_test = X  # Use same data for testing
+        y_test = y_encoded  # Use same data for testing
 
         # Use the ALREADY FITTED preprocessor
         X_train_processed = preprocessor.transform(X_train)
