@@ -460,12 +460,11 @@ def process_clustering_samples_for_multiclass_classification(preprocessor, const
             print(f"\nError training multiclass neural network on {name}: {str(e)}")
             continue
 
-def main():
+def multiclass_nn():
     # Process stratified sample dataset first and return fitted preprocessor
     preprocessor, constant_cols = process_stratified_sample_for_multiclass_classification()
     
     # Process Clustering sample datasets using the fitted preprocessor
     process_clustering_samples_for_multiclass_classification(preprocessor, constant_cols)
 
-if __name__ == "__main__":
-    main()
+    return
