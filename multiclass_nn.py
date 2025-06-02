@@ -147,7 +147,7 @@ def train_multiclass_neural_network(X_train, y_train, X_test, y_test, dataset_na
     print(f"Precision: {precision:.4f}")
     print(f"Recall: {recall:.4f}")
     
-    evaluation_dir = "multiclass_model-2"
+    evaluation_dir = "multiclass_model"
     if not os.path.exists(evaluation_dir):
         os.makedirs(evaluation_dir)
     
