@@ -410,13 +410,11 @@ def process_clustering_samples_for_binary_classification(preprocessor, constant_
 
     return 
 
-def main():
+def binary_nn():
      # Process stratified sample first and get fitted preprocessor
     preprocessor, constant_cols = process_stratified_sample_for_binay_classification()
     
     # Process Clustering samples using the fitted preprocessor
     process_clustering_samples_for_binary_classification(preprocessor, constant_cols)
 
-if __name__ == "__main__":
-    main()
-
+    return
