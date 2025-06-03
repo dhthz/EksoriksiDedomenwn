@@ -47,7 +47,7 @@ def stratified_sampling_multicolumn(data, columns, sample_size=100000, random_se
 
     # Round to integers and ensure at least 1 sample per group
     group_counts = group_counts.with_columns(
-        pl.max_horizontal(pl.col("target_count").round(), 1).cast(
+        pl.max_horizontal(pl.col("target_count").round(), 2).cast(
             pl.Int64).alias("samples_needed")
     )
 
@@ -608,6 +608,41 @@ def hdbscan_sampling(data, sample_size=10000, random_seed=42):
         return None
 
 
+def remove_zero_variance_columns(df):
+    print("Checking for zero variance columns...")
+
+    # Get numeric columns (excluding target columns)
+    numeric_cols = [col for col in df.columns
+                    if df.schema[col] in (pl.Float64, pl.Int64, pl.Float32, pl.Int32)
+                    and col not in ['Label', 'Traffic Type']]
+
+    zero_variance_cols = []
+
+    # Check each numeric column for zero variance
+    for col in numeric_cols:
+        try:
+            std_val = df.select(pl.std(col)).item()
+            if std_val == 0 or std_val is None:
+                zero_variance_cols.append(col)
+        except Exception as e:
+            print(f"Error checking variance for column {col}: {e}")
+
+    # Remove zero variance columns
+    if zero_variance_cols:
+        print(f"Found {len(zero_variance_cols)} zero variance columns:")
+        for col in zero_variance_cols:
+            print(f"  - {col}")
+
+        df_cleaned = df.drop(zero_variance_cols)
+        print(
+            f"Removed {len(zero_variance_cols)} columns. Dataset now has {df_cleaned.width} columns.")
+    else:
+        print("No zero variance columns found.")
+        df_cleaned = df
+
+    return df_cleaned
+
+
 def main():
     file_name = 'data'
     df = load_data_from_csv_parquet_format(file_name)
@@ -633,15 +668,21 @@ def main():
         metrics = analyze_variance_with_pca(df, df_reduced_columns)
 
         # Perform stratified sampling on the reduced_columns dataset
-        stratified_sample = stratified_sampling_multicolumn(
+        stratified_sample_not_cleaned = stratified_sampling_multicolumn(
             df_reduced_columns, ['Label', 'Traffic Type'], 10000)
+
+        stratified_sample = remove_zero_variance_columns(
+            stratified_sample_not_cleaned)
 
         # Calculate preservation statistics for the stratified sample based on the original dataset
         calculate_new_data_set_preservation_statistics(
             df_reduced_columns, stratified_sample, 'stratified_sample')
 
         # Perform Kmeans sampling
-        kmeans_dataset = kmeans_sampling(df_reduced_columns)
+        kmeans_dataset_not_cleaned = kmeans_sampling(df_reduced_columns)
+
+        kmeans_dataset = remove_zero_variance_columns(
+            kmeans_dataset_not_cleaned)
 
         # Calculate preservation statistics for the kmeans sample based on the original dataset
         calculate_new_data_set_preservation_statistics(
@@ -649,6 +690,11 @@ def main():
 
         # Perform HDBSCAN sampling
         hdbscan_dataset = hdbscan_sampling(df_reduced_columns)
+
+        hdbscan_dataset_not_cleaned = kmeans_sampling(df_reduced_columns)
+
+        kmeans_dataset = remove_zero_variance_columns(
+            hdbscan_dataset_not_cleaned)
 
         # Calculate preservation statistics for the hdbscan sample based on the original dataset
         calculate_new_data_set_preservation_statistics(
