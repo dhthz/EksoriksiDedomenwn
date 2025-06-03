@@ -27,15 +27,12 @@ def build_multiclass_neural_network(input_shape, num_classes):
         layers.Input(shape=(input_shape,)),
         
         layers.Dense(128, activation='relu'),
-        layers.BatchNormalization(),
         layers.Dropout(0.3),
         
         layers.Dense(64, activation='relu'),
-        layers.BatchNormalization(),
         layers.Dropout(0.2),
         
         layers.Dense(32, activation='relu'),
-        layers.BatchNormalization(),
         layers.Dropout(0.1),
         
         layers.Dense(num_classes, activation='softmax')
