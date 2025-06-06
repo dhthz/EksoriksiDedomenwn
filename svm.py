@@ -560,7 +560,15 @@ def diagnose_scores(df, X, y_binary, svm_model=None):
     print("\n===== DIAGNOSIS COMPLETE =====\n")
 
 
+def main():
+    run_svm()
+
+
 if __name__ == "__main__":
+    main()
+
+
+def run_svm():
     # Define data sample paths
     data_samples = {
         'stratified_sampling': "sampled_data/stratified_sampled_data",
