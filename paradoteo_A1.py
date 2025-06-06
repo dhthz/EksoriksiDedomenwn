@@ -7,15 +7,7 @@ import seaborn as sns
 import json
 
 
-# CORRECT Helper function gia na sanitizarei ta onomata twn columns
 def sanitize_filename(original_name):
-    """
-    Sanitizes string for use in filenames and paths.
-    Args: 
-        - original_name: String to sanitize
-    Returns: 
-        - Sanitized string safe for filenames
-    """
     # Replace problematic characters
     invalid_chars = '<>:"/\\|?*() '
     sanitized = original_name
@@ -32,11 +24,7 @@ def sanitize_filename(original_name):
     return sanitized
 
 
-def load_data_from_csv_parquet_format(file_name):  # CORRECT
-    """
-    Loads Data from Parquet or CSV file given its path and returns it as a polars Dataframe.
-    Args: data (pl.DataFrame): Dataset (Polars DataFrame)
-    """
+def load_data_from_csv_parquet_format(file_name):
     try:
         if (os.path.exists(f"{file_name}.parquet")):
             print(f"Loading data from file {file_name}.parquet")
@@ -58,11 +46,7 @@ def load_data_from_csv_parquet_format(file_name):  # CORRECT
         return None
 
 
-def analyze_data(data):  # CORRECT
-    """
-    Analyzes the data and returns statistics.
-    Args: data (pl.DataFrame): Dataset (Polars DataFrame)
-    """
+def analyze_data(data):
     try:
         print("Performing Data Analysis...")
 
@@ -89,12 +73,6 @@ def analyze_data(data):  # CORRECT
 
 
 def plot_histograms_grouped_by_column(data, column_name=None):  # Working
-    """
-    Plots memory-efficient grouped histograms for numeric columns.
-    If column_name is provided, plots grouped histograms by that column.
-    If column_name is None, plots regular histograms.
-    """
-    # Select numeric columns using Polars
     numeric_data = data.select(
         [col for col, dtype in data.schema.items() if dtype in (pl.Float64, pl.Int64)]
     )
@@ -185,12 +163,6 @@ def plot_histograms_grouped_by_column(data, column_name=None):  # Working
 
 
 def plot_boxplots_grouped_by_column(data, column_name=None):
-    """
-    Plots boxplots for all numeric columns grouped by the column_name.
-    Args:
-        - data (pl.DataFrame): Dataset
-        - column_name (str): Column to group by
-    """
     numeric_data = data.select(
         [col for col, dtype in data.schema.items() if dtype in (pl.Float64, pl.Int64)]
     )
@@ -244,14 +216,7 @@ def plot_boxplots_grouped_by_column(data, column_name=None):
         print(f"Saved boxplot to {output_path}")
 
 
-# TODO Tha to kanoume gia sugkekrimena columns mallon
 def calculate_feature_correlations(data):
-    """
-    Calculates correlations between all numeric features to identify redundant columns.
-    Returns a correlation matrix and saves analysis files.
-    Args:
-        data (pl.DataFrame): The full dataset
-    """
     print("Analyzing feature correlations...")
 
     # First, convert categorical columns to numeric
@@ -286,13 +251,7 @@ def calculate_feature_correlations(data):
             .alias('Traffic Type')
         )
 
-        # Log the mapping for reference
-        print("Converted 'Traffic Type' to numeric with mapping:")
-        for k, v in type_mapping.items():
-            print(f"  {k} -> {v}")
-
-    # Make sure Label is included in numeric columns
-    # Create list of columns to include (Label + numeric columns)
+    # List of columns to include
     columns_to_analyze = []
 
     # First add Label if it exists (ensure it's first in the matrix)
@@ -315,7 +274,6 @@ def calculate_feature_correlations(data):
     zero_var_cols = []
 
     for col in numeric_data.columns:
-        # Calculate variance using nan-safe methods
         try:
             # Explicitly compute variance to check if close to zero
             variance = numeric_data.select(pl.col(col)).var().to_numpy().item()
@@ -357,7 +315,6 @@ def calculate_feature_correlations(data):
     # Find highly correlated feature pairs (candidates for removal)
     high_corr_pairs = []
 
-    # Use numpy for efficiency with large matrices
     corr_values = corr_df.values
     np.fill_diagonal(corr_values, 0)  # Remove self-correlations
 
@@ -377,15 +334,12 @@ def calculate_feature_correlations(data):
                 high_corr_pairs.append((feature1, feature2, correlation))
 
     print(f"Found {len(high_corr_pairs)} highly correlated feature pairs")
-    print("Analysis files saved to 'feature_selection' folder")
+    print("Analysis files saved to 'feature_selection/'")
 
     return corr_matrix
 
 
 def count_categories_in_column(data, column_name):
-    """
-    Counts the occurrences of each category in the specified column.
-    """
     # Get the unique categories in the specified column
     categories = data.select(column_name).unique().to_series().to_list()
     print(categories)
@@ -414,7 +368,6 @@ def extract_significant_correlations(corr_matrix, threshold=0.15):
 
 
 def calculate_correlation_matrix(data):
-    # WORKING
     columns_to_drop_NO_VARIANCE = [
         "Bwd PSH Flags",
         "Bwd URG Flags",
@@ -460,20 +413,14 @@ def calculate_correlation_matrix(data):
     # Convert to pandas for analysis and saving
     corr_matrix_pd = corr_matrix.to_pandas()
 
-    # Print the shape to verify
-    print(f"Correlation matrix shape: {corr_matrix_pd.shape}")
-
-    # Debug: Print the first few column names
-    print("First 5 column names:", corr_matrix_pd.columns[:5].tolist())
-
-    # Make lists of column and index names - IMPORTANT: we use the actual names from the pandas DataFrame
+    # Make lists of column and index names
     all_columns = corr_matrix_pd.columns.tolist()
 
     # DEBUG: Check if index and columns are the same
     if not all(corr_matrix_pd.index == corr_matrix_pd.columns):
         print("WARNING: Index and columns in correlation matrix do not match!")
 
-    # 1. Find top positive correlations using numpy operations (more efficient)
+    # Find top positive correlations using numpy operations
     top_positive_corrs = []
     corr_np = corr_matrix_pd.to_numpy()
 
@@ -513,10 +460,10 @@ def calculate_correlation_matrix(data):
         # Sort by correlation strength
         top_negative_corrs.sort(key=lambda x: x[2])
 
-    # 3. Identify feature clusters using numpy (more efficient)
+    # Identify feature clusters using numpy
     threshold = 0.9
     abs_corr_np = np.abs(corr_np)
-    # Set diagonal to 0 to avoid self-correlations
+    # Set diagonal to 0
     np.fill_diagonal(abs_corr_np, 0)
 
     feature_clusters = []
@@ -540,7 +487,6 @@ def calculate_correlation_matrix(data):
             # Mark as processed
             processed_indices.update(cluster_indices)
 
-    # 4. Save valuable information to separate files
     # Save top positive correlations
     if top_positive_corrs:
         with open('top_positive_correlations.txt', 'w') as f:
@@ -565,7 +511,7 @@ def calculate_correlation_matrix(data):
                 f.write(f"Cluster {i+1}: {', '.join(cluster)}\n")
         print("Feature clusters saved to 'feature_clusters.txt'")
 
-    # 5. Generate a simplified correlation matrix with only important features
+    # Generate a simplified correlation matrix with only important features
     # Extract unique features from clusters (one per cluster)
     important_features = []
     clustered_features = set()
@@ -598,7 +544,6 @@ def calculate_correlation_matrix(data):
         print(
             "Skipping simplified matrix creation - too few features or not enough reduction")
 
-    # Save the full correlation matrix to a .txt file using pandas
     corr_matrix_pd.to_csv('correlation_matrix.txt',
                           sep='\t', header=True, index=True)
     print("Full correlation matrix saved to 'correlation_matrix.txt'")
@@ -606,7 +551,7 @@ def calculate_correlation_matrix(data):
     return corr_matrix
 
 
-def main():  # TODO REMOVE COMMENTS AND SOME PRINTS , CHECK FILE SAVING PATHS FOR PLOTS AND THEN REMOVE RANDOM STUFF
+def main():
     file_name = 'data'
     df = load_data_from_csv_parquet_format(file_name)
 

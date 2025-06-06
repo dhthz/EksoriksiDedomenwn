@@ -1,0 +1,246 @@
+{
+  "binary": {
+    "stratified_sampling": {
+      "accuracy": 0.9972011195521792,
+      "weighted_precision": 0.9972090259941221,
+      "weighted_recall": 0.9972011195521792,
+      "weighted_f1": 0.99701826723075,
+      "auc": 0.9999595305544314,
+      "benign_precision": 1.0,
+      "benign_recall": 0.7666666666666667,
+      "benign_f1": 0.8679245283018868,
+      "malicious_precision": 0.9971751412429378,
+      "malicious_recall": 1.0,
+      "malicious_f1": 0.9985855728429985
+    },
+    "kmeans": {
+      "accuracy": 1.0,
+      "weighted_precision": 1.0,
+      "weighted_recall": 1.0,
+      "weighted_f1": 1.0,
+      "auc": 1.0,
+      "benign_precision": 1.0,
+      "benign_recall": 1.0,
+      "benign_f1": 1.0,
+      "malicious_precision": 1.0,
+      "malicious_recall": 1.0,
+      "malicious_f1": 1.0
+    },
+    "hdbscan": {
+      "accuracy": 1.0,
+      "weighted_precision": 1.0,
+      "weighted_recall": 1.0,
+      "weighted_f1": 1.0,
+      "auc": 1.0,
+      "benign_precision": 1.0,
+      "benign_recall": 1.0,
+      "benign_f1": 1.0,
+      "malicious_precision": 1.0,
+      "malicious_recall": 1.0,
+      "malicious_f1": 1.0
+    }
+  },
+  "multiclass": {
+    "stratified_sampling": {
+      "accuracy": 0.9732107157137145,
+      "weighted_precision": 0.9783614919582002,
+      "weighted_recall": 0.9732107157137145,
+      "weighted_f1": 0.9740030826596762,
+      "class_distribution": {
+        "Audio": 0.2999400119976005,
+        "Background": 0.2999400119976005,
+        "Bruteforce": 0.4099180163967206,
+        "DoS": 85.35292941411717,
+        "Information Gathering": 11.9876024795041,
+        "Mirai": 1.0497900419916015,
+        "Text": 0.2999400119976005,
+        "Video": 0.2999400119976005
+      },
+      "class_metrics": {
+        "Audio": {
+          "precision": 0.8,
+          "recall": 0.5,
+          "f1-score": 0.6153846153846154,
+          "support": 8.0
+        },
+        "Background": {
+          "precision": 0.6363636363636364,
+          "recall": 1.0,
+          "f1-score": 0.7777777777777778,
+          "support": 7.0
+        },
+        "Bruteforce": {
+          "precision": 0.6428571428571429,
+          "recall": 0.9,
+          "f1-score": 0.75,
+          "support": 10.0
+        },
+        "DoS": {
+          "precision": 0.9952312827849309,
+          "recall": 0.9775175644028103,
+          "f1-score": 0.9862948960302458,
+          "support": 2135.0
+        },
+        "Information Gathering": {
+          "precision": 0.9226006191950464,
+          "recall": 0.9933333333333333,
+          "f1-score": 0.956661316211878,
+          "support": 300.0
+        },
+        "Mirai": {
+          "precision": 0.5,
+          "recall": 0.8461538461538461,
+          "f1-score": 0.6285714285714286,
+          "support": 26.0
+        },
+        "Text": {
+          "precision": 1.0,
+          "recall": 0.25,
+          "f1-score": 0.4,
+          "support": 8.0
+        },
+        "Video": {
+          "precision": 1.0,
+          "recall": 0.7142857142857143,
+          "f1-score": 0.8333333333333334,
+          "support": 7.0
+        }
+      },
+      "rare_classes": []
+    },
+    "kmeans": {
+      "accuracy": 0.9776089564174331,
+      "weighted_precision": 0.9795324327062475,
+      "weighted_recall": 0.9776089564174331,
+      "weighted_f1": 0.9778151893183767,
+      "class_distribution": {
+        "Audio": 0.2999400119976005,
+        "Background": 0.2999400119976005,
+        "Bruteforce": 0.4099180163967206,
+        "DoS": 85.35292941411717,
+        "Information Gathering": 11.9876024795041,
+        "Mirai": 1.0497900419916015,
+        "Text": 0.2999400119976005,
+        "Video": 0.2999400119976005
+      },
+      "class_metrics": {
+        "Audio": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 8.0
+        },
+        "Background": {
+          "precision": 0.4666666666666667,
+          "recall": 1.0,
+          "f1-score": 0.6363636363636364,
+          "support": 7.0
+        },
+        "Bruteforce": {
+          "precision": 1.0,
+          "recall": 0.9,
+          "f1-score": 0.9473684210526315,
+          "support": 10.0
+        },
+        "DoS": {
+          "precision": 0.9961995249406176,
+          "recall": 0.9822014051522249,
+          "f1-score": 0.9891509433962264,
+          "support": 2135.0
+        },
+        "Information Gathering": {
+          "precision": 0.945859872611465,
+          "recall": 0.99,
+          "f1-score": 0.9674267100977199,
+          "support": 300.0
+        },
+        "Mirai": {
+          "precision": 0.5,
+          "recall": 0.7692307692307693,
+          "f1-score": 0.6060606060606061,
+          "support": 26.0
+        },
+        "Text": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 8.0
+        },
+        "Video": {
+          "precision": 0.7,
+          "recall": 1.0,
+          "f1-score": 0.8235294117647058,
+          "support": 7.0
+        }
+      },
+      "rare_classes": []
+    },
+    "hdbscan": {
+      "accuracy": 0.9776089564174331,
+      "weighted_precision": 0.9795324327062475,
+      "weighted_recall": 0.9776089564174331,
+      "weighted_f1": 0.9778151893183767,
+      "class_distribution": {
+        "Audio": 0.2999400119976005,
+        "Background": 0.2999400119976005,
+        "Bruteforce": 0.4099180163967206,
+        "DoS": 85.35292941411717,
+        "Information Gathering": 11.9876024795041,
+        "Mirai": 1.0497900419916015,
+        "Text": 0.2999400119976005,
+        "Video": 0.2999400119976005
+      },
+      "class_metrics": {
+        "Audio": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 8.0
+        },
+        "Background": {
+          "precision": 0.4666666666666667,
+          "recall": 1.0,
+          "f1-score": 0.6363636363636364,
+          "support": 7.0
+        },
+        "Bruteforce": {
+          "precision": 1.0,
+          "recall": 0.9,
+          "f1-score": 0.9473684210526315,
+          "support": 10.0
+        },
+        "DoS": {
+          "precision": 0.9961995249406176,
+          "recall": 0.9822014051522249,
+          "f1-score": 0.9891509433962264,
+          "support": 2135.0
+        },
+        "Information Gathering": {
+          "precision": 0.945859872611465,
+          "recall": 0.99,
+          "f1-score": 0.9674267100977199,
+          "support": 300.0
+        },
+        "Mirai": {
+          "precision": 0.5,
+          "recall": 0.7692307692307693,
+          "f1-score": 0.6060606060606061,
+          "support": 26.0
+        },
+        "Text": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 8.0
+        },
+        "Video": {
+          "precision": 0.7,
+          "recall": 1.0,
+          "f1-score": 0.8235294117647058,
+          "support": 7.0
+        }
+      },
+      "rare_classes": []
+    }
+  }
+}

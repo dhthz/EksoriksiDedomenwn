@@ -14,18 +14,6 @@ warnings.filterwarnings('ignore')
 
 
 def stratified_sampling_multicolumn(data, columns, sample_size=100000, random_seed=42, mode=0):
-    """
-    Performs stratified sampling based on multiple columns.
-
-    Args:
-        data (pl.DataFrame): The input DataFrame
-        columns (list): List of column names to stratify by
-        sample_size (int): Target total sample size
-        random_seed (int): Random seed for reproducibility
-
-    Returns:
-        pl.DataFrame: Stratified sample of the data
-    """
     print(f"Performing stratified sampling by {columns}...")
 
     # Create a combined stratification column
@@ -99,16 +87,6 @@ def stratified_sampling_multicolumn(data, columns, sample_size=100000, random_se
 
 
 def validate_dataset_quality(original_df, sampled_df):
-    """
-    Simplified validation of how well the sampled dataset preserves key characteristics.
-
-    Args:
-        original_df (pl.DataFrame): Original full dataset
-        sampled_df (pl.DataFrame): Sampled smaller dataset
-
-    Returns:
-        dict: Dictionary with quality metrics
-    """
     print("\nValidating dataset quality...")
     metrics = {}
     output_lines = ["Dataset Quality Validation Report", "=" * 50, ""]
@@ -364,7 +342,6 @@ def populate_dataset_with_rare_classes(original_df, sampled_df, random_seed=42):
 
 
 def calculate_new_data_set_preservation_statistics(df, dfAfterSampling, file_name):
-
     # Save a copy of the original dataset for validation
     df_before_sampling = df.clone()
     # Validate information preservation
@@ -493,9 +470,10 @@ def hdbscan_sampling(data, sample_size=10000, random_seed=42):
         pl.col("target"), 1).alias("target"))
 
     results = []
-    # Define threshold for pre-sampling
-    large_group_threshold = 70000  # 1 million
-    pre_sample_size = 30000  # 100k
+
+    # Define threshold and adjusted size target for pre-sampling
+    large_group_threshold = 70000  # 70k
+    pre_sample_size = 30000  # 30k
 
     for row in counts.to_dicts():
         group_data = data.filter(pl.col("strat_group") == row["strat_group"])

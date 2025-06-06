@@ -16,9 +16,6 @@ warnings.filterwarnings('ignore')
 
 
 def evaluate_binary_classification(data_samples):
-    """
-    Evaluates SVM for binary classification (Label column - malicious/benign)
-    """
     # Dictionary to store results for comparison
     results = {}
 
@@ -130,15 +127,12 @@ def evaluate_binary_classification(data_samples):
         except Exception as e:
             print(f"Error processing {sample_name} dataset: {e}")
             results[sample_name] = {'error': str(e)}
-    # if svm_model is not None:
-        # diagnose_scores(df, X, y_binary, svm_model)
+        if svm_model is not None:
+            diagnose_scores(df, X, y_binary, svm_model)
     return results
 
 
 def evaluate_multiclass_classification(data_samples):
-    """
-    Evaluates SVM for multi-class classification (Traffic Type column)
-    """
     # Dictionary to store results for comparison
     results = {}
 
@@ -278,12 +272,6 @@ def evaluate_multiclass_classification(data_samples):
             print(
                 f"Classes in test set: {len(test_classes)} out of {len(unique_classes)}")
 
-            # Print a warning if some classes aren't in test set
-            missing_classes = set(unique_classes) - set(test_classes)
-            if missing_classes:
-                print(
-                    f"Warning: {len(missing_classes)} classes not in test set: {missing_classes}")
-
             # Calculate overall metrics
             accuracy = accuracy_score(y_test, y_pred)
             weighted_precision = precision_score(
@@ -338,7 +326,6 @@ def evaluate_multiclass_classification(data_samples):
             print("\nConfusion Matrix:")
             print(conf_matrix)
 
-            # Optionally, create a more readable confusion matrix with labels
             if len(test_classes) < 10:  # Only for a reasonable number of classes
                 try:
                     plt.figure(figsize=(10, 8))
@@ -350,7 +337,6 @@ def evaluate_multiclass_classification(data_samples):
                     plt.xticks(tick_marks, test_classes, rotation=45)
                     plt.yticks(tick_marks, test_classes)
 
-                    # Add text annotations
                     thresh = conf_matrix.max() / 2
                     for i in range(conf_matrix.shape[0]):
                         for j in range(conf_matrix.shape[1]):
@@ -371,17 +357,17 @@ def evaluate_multiclass_classification(data_samples):
                     print(
                         f"Error creating confusion matrix visualization: {e}")
 
-            # Print classification report
+            # Classification report
             print("\nClassification Report:")
             print(classification_report(y_test, y_pred, zero_division=0))
 
-            # Print key metrics
+            # Key metrics
             print(f"Overall accuracy: {accuracy:.4f}")
             print(f"Weighted precision: {weighted_precision:.4f}")
             print(f"Weighted recall: {weighted_recall:.4f}")
             print(f"Weighted F1 score: {weighted_f1:.4f}")
 
-            # Print top/bottom 3 classes by F1 score (if we have many classes)
+            # Print top/bottom 3 classes by F1 score
             if len(test_classes) > 6:
                 print("\nTop performing classes (by F1 score):")
                 class_f1_scores = [(cls, report[cls]['f1-score'], report[cls]['support'])
@@ -406,10 +392,6 @@ def evaluate_multiclass_classification(data_samples):
 
 
 def save_and_visualize_results(binary_results, multiclass_results):
-    """
-    Saves and visualizes SVM results for both classification tasks
-    """
-    # Create results directory
     os.makedirs('svm_results', exist_ok=True)
 
     # Process binary classification results
@@ -456,9 +438,7 @@ def save_and_visualize_results(binary_results, multiclass_results):
                            for k, v in multiclass_results.items() if 'error' not in v}
         }, f, indent=2)
 
-    # Create visualizations
-
-    # 1. Binary classification comparison
+    # Binary classification comparison
     plt.figure(figsize=(10, 6))
     x = np.arange(len(binary_df))
     width = 0.2
@@ -477,7 +457,7 @@ def save_and_visualize_results(binary_results, multiclass_results):
     plt.tight_layout()
     plt.savefig('svm_results/binary_classification_comparison.png')
 
-    # 2. Multiclass classification comparison
+    # Multiclass classification comparison
     plt.figure(figsize=(8, 5))
     x = np.arange(len(multiclass_df))
     width = 0.3
@@ -495,32 +475,17 @@ def save_and_visualize_results(binary_results, multiclass_results):
     plt.tight_layout()
     plt.savefig('svm_results/multiclass_classification_comparison.png')
 
-    print("Results saved to 'svm_results/' directory")
+    print("Results saved to 'svm_results/'")
     return 'svm_results/'
 
 
 def diagnose_scores(df, X, y_binary, svm_model=None):
-    """
-    Diagnostic function to investigate why a model might be getting perfect scores
-
-    Args:
-        df (pl.DataFrame): Original dataframe
-        X (np.ndarray): Feature matrix
-        y_binary (np.ndarray): Binary target labels
-        svm_model (sklearn model, optional): Trained model to analyze
-    """
-
-    print("\n===== DIAGNOSING CLASSIFICATION PERFORMANCE =====")
-
     # Get indices for each class
     benign_indices = np.where(y_binary == 0)[0]
     malicious_indices = np.where(y_binary == 1)[0]
 
     print(
         f"Found {len(benign_indices)} benign samples and {len(malicious_indices)} malicious samples")
-
-    # 2. Statistical comparison of features between classes
-    print("\n2. STATISTICAL COMPARISON OF KEY FEATURES:")
 
     # Get feature names that are numeric
     numeric_cols = [col for col in df.columns
@@ -530,7 +495,6 @@ def diagnose_scores(df, X, y_binary, svm_model=None):
     # Compare statistics using the indices rather than filtering the DataFrame
     top_diffs = []
 
-    # Look at first 30 columns
     for col_idx, col in enumerate(numeric_cols[:30]):
         try:
             if col_idx < X.shape[1]:
@@ -549,7 +513,6 @@ def diagnose_scores(df, X, y_binary, svm_model=None):
                         max(abs(benign_mean), abs(malicious_mean), 1.0)
                 else:
                     norm_diff = 0
-
                 top_diffs.append((col, norm_diff, benign_mean, malicious_mean))
         except Exception as e:
             print(f"  Error analyzing feature {col}: {e}")
@@ -560,61 +523,44 @@ def diagnose_scores(df, X, y_binary, svm_model=None):
         print(
             f"  {col}: Benign mean={b_mean:.4f}, Malicious mean={m_mean:.4f}, Diff={diff:.4f}")
 
-    # 4. Check for duplicates
-    print("\n4. CHECKING FOR DUPLICATE OR NEAR-DUPLICATE SAMPLES:")
-    if len(benign_indices) <= 1:
-        print("  Only one benign sample, can't check for duplicates")
-    else:
-        # Extract feature values for benign samples
-        benign_data = X[benign_indices]
-
-        # Calculate distances between benign samples
-        try:
-            dists = euclidean_distances(benign_data)
-            np.fill_diagonal(dists, np.inf)  # Ignore self-comparisons
-            min_dists = np.min(dists, axis=1)
-
+    # Extract feature values for benign samples
+    benign_data = X[benign_indices]
+    # Calculate distances between benign samples
+    try:
+        dists = euclidean_distances(benign_data)
+        np.fill_diagonal(dists, np.inf)  # Ignore self-comparisons
+        min_dists = np.min(dists, axis=1)
+        print(
+            f"  Min distance between benign samples: {np.min(min_dists):.4f}")
+        print(
+            f"  Max distance between benign samples: {np.max(min_dists):.4f}")
+        print(
+            f"  Avg distance between benign samples: {np.mean(min_dists):.4f}")
+        # Compare to random malicious samples
+        if len(malicious_indices) > 1:
+            sample_size = min(len(malicious_indices), len(benign_indices))
+            mal_sample_indices = np.random.choice(
+                malicious_indices, sample_size, replace=False)
+            mal_data = X[mal_sample_indices]
+            mal_dists = euclidean_distances(mal_data)
+            np.fill_diagonal(mal_dists, np.inf)
+            mal_min_dists = np.min(mal_dists, axis=1)
             print(
-                f"  Min distance between benign samples: {np.min(min_dists):.4f}")
+                f"  For comparison - avg distance between random malicious samples: {np.mean(mal_min_dists):.4f}")
+            # Compare benign to malicious
+            cross_dists = euclidean_distances(benign_data, mal_data)
+            min_cross_dists = np.min(cross_dists, axis=1)
             print(
-                f"  Max distance between benign samples: {np.max(min_dists):.4f}")
+                f"  Min distance between benign and malicious samples: {np.min(min_cross_dists):.4f}")
             print(
-                f"  Avg distance between benign samples: {np.mean(min_dists):.4f}")
-
-            # Compare to random malicious samples
-            if len(malicious_indices) > 1:
-                sample_size = min(len(malicious_indices), len(benign_indices))
-                mal_sample_indices = np.random.choice(
-                    malicious_indices, sample_size, replace=False)
-                mal_data = X[mal_sample_indices]
-
-                mal_dists = euclidean_distances(mal_data)
-                np.fill_diagonal(mal_dists, np.inf)
-                mal_min_dists = np.min(mal_dists, axis=1)
-
-                print(
-                    f"  For comparison - avg distance between random malicious samples: {np.mean(mal_min_dists):.4f}")
-
-                # Compare benign to malicious
-                cross_dists = euclidean_distances(benign_data, mal_data)
-                min_cross_dists = np.min(cross_dists, axis=1)
-
-                print(
-                    f"  Min distance between benign and malicious samples: {np.min(min_cross_dists):.4f}")
-                print(
-                    f"  Avg distance between benign and malicious samples: {np.mean(cross_dists):.4f}")
-
-                if np.min(cross_dists) > np.max(min_dists):  # TODO na bgoun ta siberasmata
-                    print(
-                        "  INSIGHT: Benign samples are closer to each other than to any malicious sample")
-                    print("  This suggests benign traffic forms a distinct cluster")
-        except Exception as e:
-            print(f"  Error in distance calculation: {e}")
+                f"  Avg distance between benign and malicious samples: {np.mean(cross_dists):.4f}")
+    except Exception as e:
+        print(f"  Error in distance calculation: {e}")
 
     print("\n===== DIAGNOSIS COMPLETE =====\n")
 
 
-def svm():
+if __name__ == "__main__":
     # Define data sample paths
     data_samples = {
         'stratified_sampling': "sampled_data/stratified_sampled_data",
@@ -634,5 +580,3 @@ def svm():
     save_and_visualize_results(binary_results, multiclass_results)
 
     print("\nEvaluation completed.")
-
-    return
