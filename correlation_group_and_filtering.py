@@ -3,30 +3,14 @@ import numpy as np
 from scipy import stats
 import polars as pl
 import os
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 import warnings  # To remove some warnings that dont cause an error
 warnings.filterwarnings('ignore')
 
 
 def analyze_variance_with_pca(original_df, reduced_df, sample_size=1000000):
-    """
-    Analyzes how much variance from the original dataset is preserved
-    in the reduced dataset using PCA, with sampling for memory efficiency.
-
-    Args:
-        original_df (pl.DataFrame): Original dataset with all features
-        reduced_df (pl.DataFrame): Dataset with reduced feature set
-        sample_size (int): Number of rows to sample for analysis
-
-    Returns:
-        dict: Metrics about variance preservation
-    """
-    import os
-    import numpy as np
-    import pandas as pd
-    import matplotlib.pyplot as plt
-    from sklearn.decomposition import PCA
-    from sklearn.preprocessing import StandardScaler
-
     print(f"Analyzing variance with PCA (using {sample_size} samples)...")
 
     # Create output directory
