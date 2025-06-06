@@ -1,0 +1,4 @@
+dataset,accuracy,weighted_precision,weighted_recall,weighted_f1,auc,benign_precision,benign_recall,benign_f1,malicious_precision,malicious_recall,malicious_f1
+stratified_sampling,0.9972011195521792,0.9972090259941221,0.9972011195521792,0.99701826723075,0.9999595305544314,1.0,0.7666666666666667,0.8679245283018868,0.9971751412429378,1.0,0.9985855728429985
+kmeans,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0
+hdbscan,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0
