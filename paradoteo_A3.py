@@ -1,8 +1,8 @@
 import sys
 import os
-from binary_model import binary_nn
-from multiclass_nn import multiclass_nn
-from svm import run_svm
+from helper_python_files.binary_model import binary_nn
+from helper_python_files.multiclass_nn import multiclass_nn
+from helper_python_files.svm import run_svm
 
 # Add the current directory to the path to ensure imports work
 current_dir = os.path.dirname(os.path.abspath(__file__))

@@ -1,5 +1,5 @@
-from svm import evaluate_binary_classification
-from correlation_group_and_filtering import simplified_feature_selection, analyze_variance_with_pca
+from helper_python_files.svm import evaluate_binary_classification
+from helper_python_files.correlation_group_and_filtering import simplified_feature_selection, analyze_variance_with_pca
 from paradoteo_A1 import load_data_from_csv_parquet_format
 import os
 import polars as pl
