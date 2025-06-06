@@ -22,7 +22,8 @@ This project implements and compares different data sampling techniques for netw
     -> pip install -r requirements.txt
 
 ### Executing:
-    Run the paradoteo_Ax.py file for the corresponding project question.
+    1. Place the data.csv file in the main project directory
+    2. Run the paradoteo_Ax.py file for the corresponding project question.
     
 
 ## All plots, csv and txt files exist in the Google Drive link below:
