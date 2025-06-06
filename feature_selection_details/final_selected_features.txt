@@ -1,0 +1,39 @@
+Selected features (36):
+===============================
+
+Active Min
+Active Std
+Bwd Bulk Rate Avg
+Bwd Bytes/Bulk Avg
+Bwd IAT Max
+Bwd Init Win Bytes
+Bwd Packet Length Min
+Bwd Packets/s
+Bwd Segment Size Avg
+CWR Flag Count
+Down/Up Ratio
+Dst Port
+ECE Flag Count
+FIN Flag Count
+FWD Init Win Bytes
+Flow Bytes/s
+Flow Packets/s
+Fwd IAT Std
+Fwd PSH Flags
+Fwd Packet Length Std
+Fwd Seg Size Min
+Fwd URG Flags
+Idle Min
+Idle Std
+Label
+Packet Length Min
+Packet Length Std
+Protocol
+RST Flag Count
+SYN Flag Count
+Src Port
+Subflow Bwd Bytes
+Subflow Fwd Bytes
+Total Bwd packets
+Total Fwd Packet
+Traffic Type

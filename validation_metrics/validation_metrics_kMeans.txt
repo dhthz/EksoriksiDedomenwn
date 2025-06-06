@@ -1,0 +1,25 @@
+Dataset Quality Validation Report
+==================================================
+
+Distribution comparison for 'Label':
+  Distribution similarity: 98.82%
+  Class		Original%	Sample%
+  ----------------------------------------
+  Benign         	0.0%		1.2%
+  Malicious      	100.0%		98.8%
+
+Distribution comparison for 'Traffic Type':
+  Distribution similarity: 99.70%
+  Class		Original%	Sample%
+  ----------------------------------------
+  Mirai          	1.1%		1.0%
+  DoS            	86.5%		85.4%
+  Information Gat	12.0%		12.0%
+  Background     	0.0%		0.3%
+  Video          	0.0%		0.3%
+  Audio          	0.0%		0.3%
+  Text           	0.0%		0.3%
+  Bruteforce     	0.4%		0.4%
+
+Overall Quality: 99.26%
+Size reduction: 99.9% (from 8656767 to 10002 rows)

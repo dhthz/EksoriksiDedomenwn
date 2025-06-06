@@ -1,0 +1,15 @@
+PCA Variance Analysis Results
+============================
+
+Dataset Dimensions:
+  Original features: 79
+  Reduced features: 34
+  Feature reduction: 57.0%
+
+Variance Preservation:
+  Variance explained by 34 components in original data: 97.08%
+
+Components Required:
+  Components needed for 80% variance (original): 19
+  Components needed for 80% variance (reduced): 21
+

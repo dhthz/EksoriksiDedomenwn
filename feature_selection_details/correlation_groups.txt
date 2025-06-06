@@ -1,0 +1,27 @@
+Correlation groups with threshold 0.7:
+=============================================
+
+Group 1: Dst Port, Traffic Type
+
+Group 2: Flow Duration, Flow IAT Max, Flow IAT Mean, Flow IAT Min, Flow IAT Std, Fwd IAT Max, Fwd IAT Mean, Fwd IAT Min, Fwd IAT Total, Idle Max, Idle Mean, Idle Min
+
+Group 3: Subflow Fwd Packets, Total Fwd Packet
+
+Group 4: Subflow Bwd Packets, Total Bwd packets
+
+Group 6: ACK Flag Count, Bwd Bytes/Bulk Avg, Bwd Header Length, Bwd Packet/Bulk Avg, Fwd Act Data Pkts, Fwd Header Length, PSH Flag Count, Total Length of Bwd Packet, Total Length of Fwd Packet
+
+Group 7: Average Packet Size, Fwd Packet Length Max, Fwd Packet Length Mean, Fwd Packet Length Min, Fwd Segment Size Avg, Packet Length Max, Packet Length Mean, Packet Length Min
+
+Group 8: Bwd Packet Length Max, Bwd Packet Length Mean, Bwd Packet Length Std, Bwd Segment Size Avg
+
+Group 9: Flow Packets/s, Fwd Packets/s
+
+Group 10: Bwd IAT Max, Bwd IAT Mean, Bwd IAT Min, Bwd IAT Std, Bwd IAT Total
+
+Group 11: Fwd URG Flags, URG Flag Count
+
+Group 12: Packet Length Std, Packet Length Variance
+
+Group 13: Active Max, Active Mean, Active Min
+

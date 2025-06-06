@@ -1,0 +1,8 @@
+Constant columns (correlation undefined):
+======================================
+
+Bwd PSH Flags
+Bwd URG Flags
+Fwd Bytes/Bulk Avg
+Fwd Packet/Bulk Avg
+Fwd Bulk Rate Avg
