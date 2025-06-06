@@ -211,87 +211,51 @@ def train_multiclass_neural_network(X_train, y_train, X_test, y_test, dataset_na
     
     return model, history
 
-# Function for setting up feature columns and preprocessor
-def setup_preprocessor():    
-    # Constant columns (drop)
-    constant_cols = ['Bwd URG Flags', 'Bwd PSH Flags', 'Fwd Bytes/Bulk Avg', 
-                    'Fwd Packet/Bulk Avg', 'Fwd Bulk Rate Avg']
-    
-    # 1. Flow timing features
-    timing_features = [
-        'Flow Duration', 'Flow Packets/s', 'Flow Bytes/s',
-        'Fwd IAT Std', 'Bwd IAT Max', 'Idle Std'
-    ]
-    
-    # 2. Packet size features
-    size_features = [
-        'Packet Length Std', 'Fwd Packet Length Std', 'Average Packet Size',
-        'Bwd Packet Length Min', 'Bwd Packet Length Max', 'Fwd Seg Size Min'
-    ]
-    
-    # 3. Protocol behavior features
-    protocol_features = [
-        'Subflow Fwd Packets', 'Subflow Bwd Packets', 
-        'Subflow Fwd Bytes', 'Subflow Bwd Bytes',
-        'Bwd Packets/s', 'Active Std', 'Active Max'
-    ]
-    
-    # 4. Window and connection features
-    connection_features = [
-        'Bwd Init Win Bytes', 'FWD Init Win Bytes',
-        'Bwd Bulk Rate Avg'
-    ]
-    
-    # 5. Flag features
-    flag_features = ['SYN Flag Count', 'CWR Flag Count', 'ECE Flag Count', 'ACK Flag Count']
-    categorical_features = ['Protocol', 'RST Flag Count', 'FIN Flag Count']
-    
-    # 6. Ratio features
-    ratio_features = ['Down/Up Ratio']
-    
-    # Port columns
+def setup_preprocessor():
+    df = pd.read_csv('sampled_data/stratified_sampled_data.csv')
+    # 1. Features to remove (constant columns)
+    constant_cols = ['Bwd URG Flags', 'Bwd PSH Flags', 'Fwd Bytes/Bulk Avg',
+                     'Fwd Packet/Bulk Avg', 'Fwd Bulk Rate Avg']
+
+    # 2. Binary features (stayes as is)
+    binary_cols = ['Fwd URG Flags', 'Fwd PSH Flags']
+
+    # 3. Categorical features for one-hot encoding
+    categorical_cols = ['Protocol', 'Down/Up Ratio',
+                        'RST Flag Count', 'FIN Flag Count']
+
+    # 4. Flag features for ordinal encoding
+    flag_cols_ordinal = ['SYN Flag Count', 'CWR Flag Count', 'ECE Flag Count']
+
+    # 5. Port columns for special encoding
     port_cols = ['Src Port', 'Dst Port']
 
-    # Create preprocessor with standard scaling for all numeric features
+    # 6. All remaining numerical features
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+
+    # Create the preprocessor with StandardScaler for all numerical features
     preprocessor = ColumnTransformer(
         transformers=[
-            # Timing features
-            ('timing', StandardScaler(), timing_features),
-            
-            # Size features
-            ('size', StandardScaler(), size_features),
-            
-            # Protocol features
-            ('protocol', StandardScaler(), protocol_features),
-            
-            # Connection features
-            ('connection', StandardScaler(), connection_features),
-            
-            # Flag features - ordinal encoding followed by scaling
-            ('flags', Pipeline([
-                ('encoder', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)),
-                ('scaler', StandardScaler())
-            ]), flag_features),
-            
-            # Categorical features - one-hot encoding (no scaling needed)
-            ('categorical', OneHotEncoder(sparse_output=False, handle_unknown='ignore'), 
-             categorical_features),
-            
-            # Ratio features
-            ('ratio', StandardScaler(), ratio_features),
-            
-            # Port columns - custom encoding followed by scaling
-            ('ports', Pipeline([
-                ('encoder', FunctionTransformer(encode_port_categories_multiclass)),
-                ('scaler', StandardScaler())
-            ]), port_cols)
+            # All numerical features with standard scaling
+            ('numerical', StandardScaler(), numeric_cols),
+
+            # Flag features with ordinal encoding
+            ('flag_ordinal', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1),
+             flag_cols_ordinal),
+
+            # Port columns
+            ('port', FunctionTransformer(encode_port_categories), port_cols),
+
+            # Categorical features
+            ('cat', OneHotEncoder(sparse_output=False, handle_unknown='ignore'),
+             categorical_cols)
         ],
-        remainder='passthrough'
+        remainder='passthrough'  # Keep binary features as is
     )
-    
+
     return preprocessor, constant_cols
 
-def encode_port_categories_multiclass(X):
+def encode_port_categories(X):
     """Simplified port encoding for multiclass"""
     if not isinstance(X, pd.DataFrame):
         X = pd.DataFrame(X, columns=['Src Port', 'Dst Port'])
